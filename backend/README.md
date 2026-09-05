@@ -22,24 +22,28 @@ Two facts about this stack that are not obvious from the code: Spring Boot 4 ren
 ### Prerequisites
 
 - JDK 21 (the Maven wrapper needs `JAVA_HOME` pointing at it)
-- Docker Desktop, for the local Supabase stack and the integration tests
+- Docker Desktop, for the PostgreSQL container and the integration tests
 - Node 18+, only for `scripts/create-demo-users.mjs`
 
 ### 1. Database and identity
 
-The `../supabase_backend` folder runs a full local Supabase in Docker:
+PostgreSQL 18 in Docker is all the API needs. The migrations are plain PostgreSQL — no extensions, no `auth` schema — so any 16+ server works, hosted Supabase included:
 
 ```powershell
-cd ..\supabase_backend
-npx supabase start
-npx supabase status      # note the service_role key
+docker run -d --name dealflow-pg18 `
+  -e POSTGRES_PASSWORD=12345678 -e POSTGRES_USER=postgres -e POSTGRES_DB=demo `
+  -p 5432:5432 -v dealflow_pg18_data:/var/lib/postgresql postgres:18
 ```
 
-Business tables live in a dedicated `dealflow` schema owned by this service's Flyway migrations. That schema is deliberately **not** in Supabase's PostgREST allow-list, so the `anon`/`authenticated` keys can never read it; all authorisation happens here. Supabase's own `supabase/migrations` only touch `public`.
+Flyway creates the `dealflow` schema and applies every migration on first boot; `DEMO_SEED=true` then fills it with synthetic data.
+
+Business tables live in a dedicated `dealflow` schema owned by this service's Flyway migrations. Against a Supabase project that schema is deliberately **not** in the PostgREST allow-list, so the `anon`/`authenticated` keys can never read it; all authorisation happens here.
+
+Identity is separate from storage. Either verification mode works against any database: hosted Supabase Auth (`AUTH_JWK_SET_URI`), or the backend-minted demo identities (`DEMO_AUTH_ENABLED=true`) that need no external service at all.
 
 ### 2. Configure
 
-Copy `.env.example` and fill it in. The defaults already point at the local stack. The one decision to make is JWT verification: local Supabase signs with a shared HS256 secret (`AUTH_JWT_SECRET`, default provided); a hosted project with signing keys enabled should clear that and set `AUTH_JWK_SET_URI` instead. Configure exactly one.
+Copy `.env.example` and fill it in. The defaults already point at the container above. The one decision to make is JWT verification: local Supabase signs with a shared HS256 secret (`AUTH_JWT_SECRET`, default provided); a hosted project with signing keys enabled should clear that and set `AUTH_JWK_SET_URI` instead. Configure exactly one.
 
 ### 3. Run
 
@@ -110,7 +114,7 @@ Not covered by automation, and said so: a real month boundary elapsing (T14 is u
 
 ```powershell
 # local Supabase: drop only the application schema, then restart with the seed on
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "drop schema dealflow cascade"
+docker exec dealflow-pg18 psql -U postgres -d demo -c "drop schema dealflow cascade"
 $env:DEMO_SEED = "true"; .\mvnw.cmd spring-boot:run
 ```
 
@@ -150,6 +154,8 @@ All amounts are persisted as `BIGINT` minor units and computed in `BigDecimal`, 
 
 The token proves who signed in; the database says what they may do. `dealflow.profiles` is read on every request, so a deactivation takes effect immediately rather than when the token expires. Portal responses are separate types with no field for cost, margin, policy thresholds or other customers. Out-of-scope reads return 404, not 403, so a probing client cannot map records it may not see.
 
+Three token issuers coexist, each verified by its own decoder and none trusted for a role: Supabase (staff), the opt-in demo personas, and storefront signups (`POST /api/v1/auth/register`, BCrypt password in `profiles.password_hash`, HS256 tokens with issuer `dealflow-local` signed by `AUTH_LOCAL_JWT_SECRET`, falling back to `DEMO_JWT_SECRET`). A signup only ever creates a CUSTOMER bound to a brand-new customer organisation, assigned to the first active rep as account manager.
+
 ### Live updates
 
 Every important mutation writes an `outbox_events` row in the business transaction. A one-second dispatcher claims rows with `FOR UPDATE SKIP LOCKED`, resolves recipients against **current** ownership, and pushes a minimal frame (id, type, entity, version) to each user's private STOMP queue. Clients refetch through REST. The WebSocket is never the source of truth; a durable `notifications` inbox survives a missed frame. The simple broker is single-instance by design — a second replica needs a broker relay first.
@@ -183,11 +189,14 @@ All endpoints are under `/api/v1`, require a bearer token, and return `{ "data",
 
 | Area | Endpoints |
 |---|---|
-| Identity | `GET /me` |
+| Identity | `GET /me` · public: `GET /auth/options` · `POST /auth/{register,login}` (storefront email/password; demo personas when `DEMO_AUTH_ENABLED`) |
+| Storefront | public: `GET /public/catalog` — list prices and an in-stock flag only; no cost, margin or quantities |
 | Quotations | `GET,POST /quotes` · `GET /quotes/{id}` · `POST /quotes/{id}/{evaluations,revisions,submissions,shares,adoptions,cancellations}` · `GET /quotes/{id}/{revisions,history}` |
+| Deal room (seller) | `GET /quotes/{id}/requests` · `POST /quotes/{id}/requests/{requestId}/responses` — text reply to a customer's comment/counter, pushed live |
 | Recommendations | `GET /quotes/{id}/recommendations` · `POST /quotes/{id}/recommendation-dismissals` |
 | Approvals | `GET /approval-requests` · `POST /approval-requests/{id}/{decisions,reassignments}` |
-| Portal | `GET /portal/{quotes,invoices}` · `GET /portal/quotes/{id}` · `POST /portal/quotes/{id}/{requests,acceptances}` |
+| Portal | `GET /portal/{quotes,invoices}` · `GET /portal/quotes/{id}` · `POST /portal/quotes/{id}/{requests,acceptances}` · `POST /portal/quote-requests` (catalogue → quotation owned by the account manager) |
+| Portal account | `GET,PATCH /portal/account` · `PUT /portal/account/preferences` · `POST /portal/account/password` |
 | Orders & stock | `GET /orders` · `GET /orders/{id}/{allocation,fulfillment}` · `POST /orders/{id}/{allocations,replans}` · `POST /shipments/{id}/dispatches` · `GET,PATCH /stock-levels` · `POST /stock-movements` |
 | Billing | `GET /invoices` · `GET /subscriptions` · `POST /subscriptions/{id}/{change-previews,changes,cancellations}` · `POST /payments` · `POST /refunds` · `GET /credit-notes` |
 | Health | `GET /alerts` · `POST /alerts/{id}/nudges` · `POST /alerts/sweeps` · `GET /notifications` |

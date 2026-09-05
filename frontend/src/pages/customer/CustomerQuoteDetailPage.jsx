@@ -1,120 +1,182 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { api, formatINR, formatDate, formatDateTime, bpToPercent } from '../../services/api';
+import { api, formatINR, formatDate, bpToPercent } from '../../services/api';
+import { useDealEvents } from '../../hooks/useDealEvents';
+import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../components/common/LoadingState';
-import { Modal } from '../../components/common/Modal';
+import { DealRoomTimeline } from '../../components/customer/DealRoomTimeline';
+import { NegotiationModal, AcceptanceModal } from '../../components/customer/QuoteActionModals';
 import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
   MessageSquare,
-  Send,
   FileCheck,
   ShieldCheck,
   Calendar,
-  Layers,
   Clock,
-  ExternalLink,
-  ChevronRight,
+  Radio,
+  RefreshCw,
 } from 'lucide-react';
+
+const EVENT_WORDS = {
+  QUOTE_REVISED: 'Your account manager revised the terms',
+  NEGOTIATION_UPDATED: 'New activity in the deal room',
+  APPROVAL_UPDATED: 'Internal approval progressed',
+  ORDER_CREATED: 'Your order was created',
+  QUOTE_SUBMITTED: 'A new version was submitted',
+};
+
+const STALE_CODES = new Set(['STALE_QUOTE_VERSION', 'ACCEPTANCE_HASH_MISMATCH']);
+
+const emptyForm = { requestType: 'COMMENT', message: '', lineKey: '', lineDescription: '', discountBp: 0, quantity: 1 };
 
 export function CustomerQuoteDetailPage() {
   const { id } = useParams();
+  const status = useConnectionStatus();
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [liveNote, setLiveNote] = useState(null);
+  const [staleNotice, setStaleNotice] = useState('');
+  const liveTimer = useRef(null);
 
-  // Negotiation Request Modal State
-  const [requestModalOpen, setRequestModalOpen] = useState(false);
-  const [requestType, setRequestType] = useState('COUNTER'); // COMMENT | CHANGE | COUNTER
-  const [requestMessage, setRequestMessage] = useState('');
-  const [selectedLineKey, setSelectedLineKey] = useState('');
-  const [counterDiscountBp, setCounterDiscountBp] = useState(0);
-  const [counterQuantity, setCounterQuantity] = useState(1);
-  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [requestError, setRequestError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Acceptance Modal State
-  const [acceptModalOpen, setAcceptModalOpen] = useState(false);
-  const [acceptanceNote, setAcceptanceNote] = useState('');
+  const [quickSending, setQuickSending] = useState(false);
+  const [quickError, setQuickError] = useState('');
+
+  const [acceptOpen, setAcceptOpen] = useState(false);
+  const [acceptNote, setAcceptNote] = useState('');
   const [accepting, setAccepting] = useState(false);
-  const [acceptanceResult, setAcceptanceResult] = useState(null);
+  const [acceptError, setAcceptError] = useState('');
+  const [acceptResult, setAcceptResult] = useState(null);
 
-  const loadQuote = async () => {
-    try {
-      setLoading(true);
-      const data = await api.get(`/portal/quotes/${id}`);
-      setQuote(data);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to load quote details:', err);
-      setError(err.message || 'Quotation not accessible or session expired');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadQuote = useCallback(
+    async (silent = false) => {
+      try {
+        if (!silent) setLoading(true);
+        const data = await api.get(`/portal/quotes/${id}`);
+        setQuote(data);
+        setError(null);
+      } catch (err) {
+        setError(err.message || 'Quotation not accessible or session expired');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [id]
+  );
 
   useEffect(() => {
     loadQuote();
-  }, [id]);
+  }, [loadQuote]);
 
-  const handleOpenCounterForLine = (line) => {
-    setSelectedLineKey(line.lineKey);
-    setCounterDiscountBp(line.discountPercentBp || 0);
-    setCounterQuantity(line.quantity || 1);
-    setRequestType('COUNTER');
-    setRequestMessage(`We would like to request an updated discount on ${line.description}.`);
-    setRequestModalOpen(true);
+  useEffect(() => () => clearTimeout(liveTimer.current), []);
+
+  useDealEvents(
+    (e) => e.entityType === 'Quote' && e.entityId === id,
+    (e) => {
+      loadQuote(true);
+      setLiveNote(EVENT_WORDS[e.type] || 'This quotation was updated');
+      clearTimeout(liveTimer.current);
+      liveTimer.current = setTimeout(() => setLiveNote(null), 6000);
+    }
+  );
+
+  const handleStale = (err, fallbackSetter) => {
+    if (STALE_CODES.has(err.code) || err.status === 409) {
+      setStaleNotice('Terms changed — review the latest version before continuing.');
+      loadQuote(true);
+      return true;
+    }
+    fallbackSetter(err.message || 'Something went wrong.');
+    return false;
+  };
+
+  const openCounterForLine = (line) => {
+    setForm({
+      requestType: 'COUNTER',
+      message: `We would like to request an updated discount on ${line.description}.`,
+      lineKey: line.lineKey,
+      lineDescription: line.description,
+      discountBp: line.discountPercentBp || 0,
+      quantity: line.quantity || 1,
+    });
+    setRequestError('');
+    setRequestOpen(true);
+  };
+
+  const openGeneralRequest = () => {
+    setForm(emptyForm);
+    setRequestError('');
+    setRequestOpen(true);
+  };
+
+  const postRequest = async (payload) => {
+    return api.postWithIdempotency(`/portal/quotes/${id}/requests`, {
+      expectedRevisionId: quote.revisionId,
+      ...payload,
+    });
   };
 
   const handleSubmitRequest = async (e) => {
     e.preventDefault();
-    if (!requestMessage.trim()) return;
-
-    setSubmittingRequest(true);
+    if (!form.message.trim()) return;
+    setSubmitting(true);
+    setRequestError('');
     try {
-      const payload = {
-        requestType,
-        expectedRevisionId: quote.revisionId,
-        message: requestMessage.trim(),
-        lineKey: selectedLineKey || null,
-        lines:
-          requestType === 'COUNTER' && selectedLineKey
-            ? [
-                {
-                  lineKey: selectedLineKey,
-                  quantity: counterQuantity,
-                  requestedDiscountBp: parseInt(counterDiscountBp, 10),
-                },
-              ]
-            : null,
-      };
-
-      await api.postWithIdempotency(`/portal/quotes/${id}/requests`, payload);
-      setRequestModalOpen(false);
-      setRequestMessage('');
-      await loadQuote();
+      const isCounter = form.requestType !== 'COMMENT' && form.lineKey;
+      await postRequest({
+        requestType: form.requestType,
+        message: form.message.trim(),
+        lineKey: form.lineKey || null,
+        lines: isCounter
+          ? [{ lineKey: form.lineKey, quantity: Number(form.quantity) || 1, requestedDiscountBp: parseInt(form.discountBp, 10) || 0 }]
+          : null,
+      });
+      setRequestOpen(false);
+      setForm(emptyForm);
+      await loadQuote(true);
     } catch (err) {
-      alert('Failed to submit request: ' + err.message);
+      if (handleStale(err, setRequestError)) setRequestOpen(false);
     } finally {
-      setSubmittingRequest(false);
+      setSubmitting(false);
     }
   };
 
-  const handleAcceptQuote = async () => {
-    setAccepting(true);
+  const handleQuickComment = async (message) => {
+    setQuickSending(true);
+    setQuickError('');
     try {
-      const payload = {
+      await postRequest({ requestType: 'COMMENT', message, lineKey: null, lines: null });
+      await loadQuote(true);
+      return true;
+    } catch (err) {
+      handleStale(err, setQuickError);
+      return false;
+    } finally {
+      setQuickSending(false);
+    }
+  };
+
+  const handleAccept = async () => {
+    setAccepting(true);
+    setAcceptError('');
+    try {
+      const res = await api.postWithIdempotency(`/portal/quotes/${id}/acceptances`, {
         revisionId: quote.revisionId,
         commercialHash: quote.commercialHash,
-        note: acceptanceNote.trim() || 'Accepted via Customer Portal Room',
-      };
-
-      const res = await api.postWithIdempotency(`/portal/quotes/${id}/acceptances`, payload);
-      setAcceptanceResult(res);
-      await loadQuote();
+        note: acceptNote.trim() || 'Accepted via customer portal',
+      });
+      setAcceptResult(res);
+      await loadQuote(true);
     } catch (err) {
-      alert('Acceptance failed: ' + err.message);
+      if (handleStale(err, setAcceptError)) setAcceptOpen(false);
     } finally {
       setAccepting(false);
     }
@@ -132,14 +194,11 @@ export function CustomerQuoteDetailPage() {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-8 text-center max-w-lg mx-auto">
         <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
-        <h3 className="text-base font-semibold text-slate-900">Quotation Inaccessible</h3>
+        <h3 className="text-base font-semibold text-slate-900">Quotation inaccessible</h3>
         <p className="text-xs text-slate-500 mt-1">{error || 'Unable to retrieve proposal details.'}</p>
-        <Link
-          to="/customer/quotes"
-          className="inline-flex items-center space-x-1.5 mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800"
-        >
+        <Link to="/customer/quotes" className="inline-flex items-center space-x-1.5 mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800">
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to Quotations</span>
+          <span>Back to quotations</span>
         </Link>
       </div>
     );
@@ -147,155 +206,154 @@ export function CustomerQuoteDetailPage() {
 
   const totals = quote.totals || {};
   const recurring = totals.recurring || [];
+  const closed = quote.orderPlaced || ['WITHDRAWN', 'CLOSED', 'EXPIRED', 'CONFIRMED'].includes(quote.status);
 
   return (
     <div className="space-y-6">
-      {/* Top Breadcrumb & Action Bar */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center space-x-3">
-          <Link
-            to="/customer/quotes"
-            className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-white"
-          >
+          <Link to="/customer/quotes" aria-label="Back to quotations" className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-white">
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900">{quote.reference}</h2>
               <StatusBadge status={quote.status} />
-              <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                Rev #{quote.versionNumber}
+              <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Rev #{quote.versionNumber}</span>
+              <span
+                role="status"
+                className={`inline-flex items-center space-x-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                  status === 'connected' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-800 bg-amber-50 border-amber-200'
+                }`}
+              >
+                <Radio className="w-3 h-3" />
+                <span>{status === 'connected' ? 'Live' : 'Reconnecting'}</span>
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">{quote.title || 'Commercial Agreement Proposal'}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{quote.title || 'Commercial agreement proposal'}</p>
           </div>
         </div>
 
-        {/* Customer Actions */}
         <div className="flex items-center space-x-2.5">
           <button
-            onClick={() => {
-              setSelectedLineKey('');
-              setRequestType('COMMENT');
-              setRequestMessage('');
-              setRequestModalOpen(true);
-            }}
-            className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-colors shadow-xs"
+            type="button"
+            onClick={() => loadQuote(true)}
+            aria-label="Refresh"
+            className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-slate-900 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
           >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Negotiate / Comment</span>
+            <RefreshCw className="w-3.5 h-3.5" />
           </button>
-
+          {!closed && (
+            <button
+              type="button"
+              onClick={openGeneralRequest}
+              className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-colors shadow-xs"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Negotiate</span>
+            </button>
+          )}
           {quote.acceptable && !quote.orderPlaced && (
             <button
-              onClick={() => setAcceptModalOpen(true)}
+              type="button"
+              onClick={() => {
+                setAcceptError('');
+                setAcceptResult(null);
+                setAcceptOpen(true);
+              }}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-colors shadow-xs"
             >
               <FileCheck className="w-4 h-4" />
-              <span>Accept & Confirm Deal</span>
+              <span>Accept &amp; confirm</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Acceptance or Confirmation Banner */}
+      {/* Live / stale notices */}
+      {liveNote && (
+        <div role="status" className="bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs rounded-xl px-4 py-2.5 flex items-center space-x-2">
+          <Radio className="w-4 h-4 text-indigo-600" />
+          <span>
+            <strong>Updated just now.</strong> {liveNote}.
+          </span>
+        </div>
+      )}
+      {staleNotice && (
+        <div role="alert" className="bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl px-4 py-2.5 flex items-center justify-between">
+          <span className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-amber-600" />
+            <span>{staleNotice}</span>
+          </span>
+          <button type="button" onClick={() => setStaleNotice('')} className="text-[11px] font-semibold underline underline-offset-2">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {quote.orderPlaced && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start space-x-3">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
           <div>
-            <h4 className="text-xs font-bold text-emerald-900">Proposal Formally Executed & Order Confirmed</h4>
+            <h4 className="text-xs font-bold text-emerald-900">Proposal executed &amp; order confirmed</h4>
             <p className="text-xs text-emerald-700 mt-0.5">
-              Sales order reference <span className="font-mono font-bold">{quote.orderReference}</span> has been created
-              and assigned to warehouse fulfillment.
+              Sales order <span className="font-mono font-bold">{quote.orderReference}</span> has been created and assigned to fulfilment.
             </p>
           </div>
         </div>
       )}
 
-      {/* Awaiting Internal Approval Banner */}
-      {quote.awaitingInternalApproval && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start space-x-3">
-          <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+      {!quote.orderPlaced && quote.statusMessage && (
+        <div className={`rounded-xl p-4 flex items-start space-x-3 border ${quote.awaitingInternalApproval ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+          <Clock className={`w-5 h-5 shrink-0 mt-0.5 ${quote.awaitingInternalApproval ? 'text-amber-600' : 'text-indigo-600'}`} />
           <div>
-            <h4 className="text-xs font-bold text-amber-900">Awaiting Seller Discount Authorization</h4>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {quote.statusMessage ||
-                'This proposal is currently in internal deal desk review for requested concessions. It will become acceptable once authorized.'}
-            </p>
+            <h4 className={`text-xs font-bold ${quote.awaitingInternalApproval ? 'text-amber-900' : 'text-slate-900'}`}>
+              {quote.awaitingInternalApproval ? 'Awaiting seller authorisation' : 'Status'}
+            </h4>
+            <p className={`text-xs mt-0.5 ${quote.awaitingInternalApproval ? 'text-amber-700' : 'text-slate-600'}`}>{quote.statusMessage}</p>
           </div>
         </div>
       )}
 
-      {/* Main Grid: Itemized Proposal Lines + Totals Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Itemized Line Items */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Lines */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider">Itemized Line Terms</h3>
-              <span className="text-xs text-slate-500">Commercial hash verified</span>
+              <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider">Itemised terms</h3>
+              <span className="text-[11px] text-slate-500 font-mono" title="Commercial hash">
+                {String(quote.commercialHash || '').slice(0, 10)}…
+              </span>
             </div>
-
             <div className="divide-y divide-slate-100">
-              {(quote.lines || []).map((line, idx) => (
-                <div key={idx} className="p-4 hover:bg-slate-50/50 transition-colors flex flex-col sm:flex-row justify-between gap-4">
+              {(quote.lines || []).map((line) => (
+                <div key={line.lineKey} className="p-4 hover:bg-slate-50/50 transition-colors flex flex-col sm:flex-row justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
                       <span className="font-semibold text-xs text-slate-900">{line.description}</span>
-                      {line.billingCadence && line.billingCadence !== 'ONE_TIME' && (
-                        <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-100 uppercase">
-                          {line.billingCadence}
-                        </span>
+                      {line.billingCadence && line.billingCadence !== 'one-time' && (
+                        <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 uppercase">{line.billingCadence}</span>
                       )}
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1.5">
-                      <span>
-                        Qty: <strong className="text-slate-800">{line.quantity}</strong>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Unit: <strong className="text-slate-800 tabular-nums">{formatINR(line.unitPrice)}</strong>
-                      </span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-1.5">
+                      <span>Qty <strong className="text-slate-800">{line.quantity}</strong></span>
+                      <span>Unit <strong className="text-slate-800 tabular-nums">{formatINR(line.unitPrice)}</strong></span>
                       {line.discountPercentBp > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">
-                            Discount: {bpToPercent(line.discountPercentBp)}%
-                          </span>
-                        </>
+                        <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Discount {bpToPercent(line.discountPercentBp)}%</span>
                       )}
-                      {line.promisedDate && (
-                        <>
-                          <span>•</span>
-                          <span>Est. Delivery: {formatDate(line.promisedDate)}</span>
-                        </>
-                      )}
+                      {line.promisedDate && <span>Est. delivery {formatDate(line.promisedDate)}</span>}
                     </div>
-
                     {line.availabilityNote && (
-                      <div className="mt-2 text-[11px] text-slate-600 bg-slate-50 px-2.5 py-1 rounded border border-slate-100 inline-block">
-                        {line.availabilityNote}
-                      </div>
+                      <div className="mt-2 text-[11px] text-slate-600 bg-slate-50 px-2.5 py-1 rounded border border-slate-100 inline-block">{line.availabilityNote}</div>
                     )}
                   </div>
-
                   <div className="text-right flex flex-col justify-between items-end shrink-0">
-                    <div className="font-bold text-sm text-slate-900 tabular-nums">
-                      {formatINR(line.lineTotal)}
-                    </div>
-                    {line.tax && (
-                      <div className="text-[11px] text-slate-400">
-                        +Tax: {formatINR(line.tax)}
-                      </div>
-                    )}
-
-                    {!quote.orderPlaced && (
-                      <button
-                        onClick={() => handleOpenCounterForLine(line)}
-                        className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold mt-2"
-                      >
-                        Counter Discount &rarr;
+                    <div className="font-bold text-sm text-slate-900 tabular-nums">{formatINR(line.lineTotal)}</div>
+                    {line.tax && parseFloat(line.tax) > 0 && <div className="text-[11px] text-slate-400">+ tax {formatINR(line.tax)}</div>}
+                    {!closed && (
+                      <button type="button" onClick={() => openCounterForLine(line)} className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold mt-2 rounded focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60">
+                        Counter discount →
                       </button>
                     )}
                   </div>
@@ -304,286 +362,82 @@ export function CustomerQuoteDetailPage() {
             </div>
           </div>
 
-          {/* Activity / Negotiation History */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
-            <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider">
-              Negotiation & Discussion Trail
-            </h3>
-
-            {(!quote.activity || quote.activity.length === 0) ? (
-              <div className="text-center py-6 text-slate-400 text-xs">
-                No counteroffers or messages recorded for this proposal revision.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {quote.activity.map((act) => (
-                  <div
-                    key={act.id}
-                    className={`p-3 rounded-lg border text-xs ${
-                      act.fromCustomer
-                        ? 'bg-slate-50 border-slate-200 ml-4'
-                        : 'bg-indigo-50/50 border-indigo-100 mr-4'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                      <span className="font-semibold text-slate-700">
-                        {act.fromCustomer ? 'You (Customer)' : 'Deal Desk Representative'}
-                      </span>
-                      <span>{formatDateTime(act.createdAt)}</span>
-                    </div>
-                    <div className="text-slate-800 leading-relaxed">{act.message}</div>
-                    {act.responseMessage && (
-                      <div className="mt-2 pt-2 border-t border-slate-200/80 text-indigo-900 font-medium">
-                        Rep Response: {act.responseMessage}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <DealRoomTimeline
+            activity={quote.activity}
+            onQuickComment={handleQuickComment}
+            sending={quickSending}
+            disabled={closed}
+            error={quickError}
+          />
         </div>
 
-        {/* Right Col: Financial Summary & Verification */}
+        {/* Totals */}
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
-            <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider pb-2 border-b border-slate-100">
-              Commercial Totals
-            </h3>
-
+            <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider pb-2 border-b border-slate-100">Commercial totals</h3>
             <div className="space-y-2.5 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>One-Time Subtotal</span>
-                <span className="tabular-nums font-medium text-slate-800">{formatINR(totals.oneTimeSubtotal)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Applicable Tax</span>
-                <span className="tabular-nums font-medium text-slate-800">{formatINR(totals.oneTimeTax)}</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-slate-100 text-sm font-bold text-slate-900">
-                <span>One-Time Total</span>
-                <span className="tabular-nums text-indigo-600">{formatINR(totals.oneTimeTotal)}</span>
-              </div>
+              <div className="flex justify-between text-slate-600"><span>One-time subtotal</span><span className="tabular-nums font-medium text-slate-800">{formatINR(totals.oneTimeSubtotal)}</span></div>
+              <div className="flex justify-between text-slate-600"><span>Applicable tax</span><span className="tabular-nums font-medium text-slate-800">{formatINR(totals.oneTimeTax)}</span></div>
+              <div className="flex justify-between pt-2 border-t border-slate-100 text-sm font-bold text-slate-900"><span>One-time total</span><span className="tabular-nums text-indigo-600">{formatINR(totals.oneTimeTotal)}</span></div>
             </div>
-
-            {/* Recurring Breakdown if any */}
             {recurring.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
-                <div className="text-[11px] font-semibold text-slate-500 uppercase">Recurring Cadence</div>
-                {recurring.map((rec, i) => (
-                  <div key={i} className="flex justify-between text-xs bg-slate-50 p-2 rounded-lg">
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <div className="text-[11px] font-semibold text-slate-500 uppercase">Recurring</div>
+                {recurring.map((rec) => (
+                  <div key={rec.cadence} className="flex justify-between text-xs bg-slate-50 p-2 rounded-lg">
                     <span className="text-slate-700 font-medium">{rec.cadence}</span>
-                    <span className="font-bold text-slate-900 tabular-nums">
-                      {formatINR(rec.amount)} <span className="font-normal text-slate-500">/period</span>
-                    </span>
+                    <span className="font-bold text-slate-900 tabular-nums">{formatINR(rec.amount)} <span className="font-normal text-slate-500">/period</span></span>
                   </div>
                 ))}
               </div>
             )}
-
             {totals.dueOnConfirmation && (
-              <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100 text-xs">
-                <div className="text-emerald-800 font-semibold">Due on Confirmation:</div>
-                <div className="text-base font-bold text-emerald-950 tabular-nums mt-0.5">
-                  {formatINR(totals.dueOnConfirmation)}
-                </div>
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 text-xs">
+                <div className="text-emerald-800 font-semibold">Due on confirmation</div>
+                <div className="text-base font-bold text-emerald-950 tabular-nums mt-0.5">{formatINR(totals.dueOnConfirmation)}</div>
               </div>
             )}
-
             <div className="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-500">
-              <div className="flex items-center space-x-1.5">
-                <ShieldCheck className="w-4 h-4 text-slate-400" />
-                <span>Enforced cryptographic quote hash</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <span>Terms valid through: {formatDate(quote.validUntil)}</span>
-              </div>
+              <div className="flex items-center space-x-1.5"><ShieldCheck className="w-4 h-4 text-slate-400" /><span>Hash-verified acceptance</span></div>
+              <div className="flex items-center space-x-1.5"><Calendar className="w-4 h-4 text-slate-400" /><span>Valid through {formatDate(quote.validUntil)}</span></div>
             </div>
           </div>
 
-          {/* Legal / Policy Note */}
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-xs text-slate-500 leading-relaxed">
-            <h4 className="font-semibold text-slate-700 mb-1">Contract Execution Rules</h4>
-            {quote.backorderTerms && <p>Backorders: {quote.backorderTerms}.</p>}
-            {quote.invoicingNote && <p className="mt-1">Billing: {quote.invoicingNote}.</p>}
-            <p className="mt-1 text-[11px] text-slate-400">
-              Acceptance binds the precise revision and totals shown above without discrepancy.
-            </p>
+            <h4 className="font-semibold text-slate-700 mb-1">Execution rules</h4>
+            {quote.backorderTerms && <p>Backorders: {quote.backorderTerms.replace(/_/g, ' ').toLowerCase()}.</p>}
+            {quote.invoicingNote && <p className="mt-1">{quote.invoicingNote}</p>}
+            <p className="mt-1 text-[11px] text-slate-400">Acceptance binds the exact revision and totals shown above.</p>
           </div>
         </div>
       </div>
 
-      {/* Negotiation / Counteroffer Modal */}
-      <Modal
-        isOpen={requestModalOpen}
-        onClose={() => setRequestModalOpen(false)}
-        title="Submit Commercial Request / Counteroffer"
-        subtitle={`Proposal Reference: ${quote.reference}`}
-      >
-        <form onSubmit={handleSubmitRequest} className="space-y-4 text-xs">
-          <div>
-            <label className="block font-medium text-slate-700 mb-1">Request Action</label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'COUNTER', label: 'Counteroffer' },
-                { id: 'CHANGE', label: 'Item Change' },
-                { id: 'COMMENT', label: 'General Comment' },
-              ].map((type) => (
-                <button
-                  type="button"
-                  key={type.id}
-                  onClick={() => setRequestType(type.id)}
-                  className={`py-2 text-center rounded-lg font-semibold border ${
-                    requestType === type.id
-                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  {type.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectedLineKey && (
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
-              <div className="font-semibold text-slate-800">Target Line Item: {selectedLineKey}</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] text-slate-600 mb-1">Requested Discount (Basis Points)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="9999"
-                    value={counterDiscountBp}
-                    onChange={(e) => setCounterDiscountBp(e.target.value)}
-                    className="w-full p-2 border border-slate-200 rounded-lg bg-white"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    {bpToPercent(counterDiscountBp)}% concession
-                  </span>
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-600 mb-1">Desired Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={counterQuantity}
-                    onChange={(e) => setCounterQuantity(parseInt(e.target.value, 10))}
-                    className="w-full p-2 border border-slate-200 rounded-lg bg-white"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block font-medium text-slate-700 mb-1">Message to Sales Representative</label>
-            <textarea
-              rows={3}
-              required
-              value={requestMessage}
-              onChange={(e) => setRequestMessage(e.target.value)}
-              placeholder="Detail your request, target pricing, or schedule requirements..."
-              className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-            />
-          </div>
-
-          <div className="flex justify-end space-x-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setRequestModalOpen(false)}
-              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submittingRequest}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold rounded-lg flex items-center space-x-1.5"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>{submittingRequest ? 'Sending...' : 'Send Request'}</span>
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* 1-Click Acceptance Modal */}
-      <Modal
-        isOpen={acceptModalOpen}
-        onClose={() => setAcceptModalOpen(false)}
-        title="Execute Agreement & Confirm Order"
-        subtitle={`Proposal Reference: ${quote.reference}`}
-      >
-        {acceptanceResult ? (
-          <div className="space-y-4 text-xs">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-              <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-              <h4 className="font-bold text-sm text-emerald-900">Agreement Confirmed!</h4>
-              <p className="text-emerald-700 mt-1">{acceptanceResult.message}</p>
-              {acceptanceResult.orderReference && (
-                <div className="mt-3 font-mono font-bold text-sm bg-white border border-emerald-200 py-1.5 px-3 rounded-lg inline-block text-slate-800">
-                  Order Reference: {acceptanceResult.orderReference}
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => {
-                setAcceptModalOpen(false);
-                setAcceptanceResult(null);
-                loadQuote();
-              }}
-              className="w-full py-2.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800"
-            >
-              Return to Deal Room
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4 text-xs">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
-              <div className="flex justify-between font-semibold text-slate-800">
-                <span>Total Execution Value:</span>
-                <span className="text-indigo-600 tabular-nums">{formatINR(totals.oneTimeTotal)}</span>
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Revision #{quote.versionNumber} terms will be locked, and commercial order fulfillment will commence.
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Execution Note (Optional)</label>
-              <textarea
-                rows={2}
-                value={acceptanceNote}
-                onChange={(e) => setAcceptanceNote(e.target.value)}
-                placeholder="E.g., Approved by Procurement Department PO #9401"
-                className="w-full p-2 border border-slate-200 rounded-lg bg-white"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setAcceptModalOpen(false)}
-                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAcceptQuote}
-                disabled={accepting}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-semibold rounded-lg flex items-center space-x-1.5"
-              >
-                <FileCheck className="w-3.5 h-3.5" />
-                <span>{accepting ? 'Confirming...' : 'I Accept & Sign Proposal'}</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <NegotiationModal
+        open={requestOpen}
+        onClose={() => setRequestOpen(false)}
+        quote={quote}
+        form={form}
+        setForm={setForm}
+        onSubmit={handleSubmitRequest}
+        submitting={submitting}
+        error={requestError}
+      />
+      <AcceptanceModal
+        open={acceptOpen}
+        onClose={() => setAcceptOpen(false)}
+        quote={quote}
+        note={acceptNote}
+        setNote={setAcceptNote}
+        onAccept={handleAccept}
+        accepting={accepting}
+        result={acceptResult}
+        error={acceptError}
+        onDone={() => {
+          setAcceptOpen(false);
+          setAcceptResult(null);
+          loadQuote(true);
+        }}
+      />
     </div>
   );
 }

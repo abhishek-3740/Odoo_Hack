@@ -52,7 +52,10 @@ public record AppProperties(
              * provisioning for every account. */
             @DefaultValue("true") boolean autoProvisionRep,
             String supabaseUrl,
-            String supabaseServiceRoleKey) {
+            String supabaseServiceRoleKey,
+            /* Signs tokens for accounts that registered with a password through
+             * the storefront. Falls back to the demo secret when unset. */
+            String localJwtSecret) {
     }
 
     public record Billing(

@@ -39,6 +39,7 @@ class DemoTokenServiceTest {
                 List.of("http://localhost:3000"),
                 true,
                 "http://127.0.0.1:54321",
+                null,
                 null
         );
 
@@ -53,7 +54,16 @@ class DemoTokenServiceTest {
 
         when(teams.save(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
         when(customers.save(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> call.getArgument(0));
-        service = new DemoTokenService(properties, profiles, teams, customers);
+
+        // The bootstrap now runs through its own TransactionTemplate so a lost
+        // race on shared reference rows cannot roll back the caller. Here that
+        // only needs a manager that hands out a status and accepts a commit.
+        org.springframework.transaction.PlatformTransactionManager transactionManager =
+                mock(org.springframework.transaction.PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(call -> new org.springframework.transaction.support.SimpleTransactionStatus());
+
+        service = new DemoTokenService(properties, profiles, teams, customers, transactionManager);
     }
 
     @Test
@@ -114,7 +124,7 @@ class DemoTokenServiceTest {
     void hostedJwksAndDedicatedDemoSecretCanCoexist() {
         when(properties.auth()).thenReturn(new Auth("https://project.supabase.co/auth/v1",
                 "https://project.supabase.co/auth/v1/.well-known/jwks.json", null,
-                "authenticated", true, 60L, List.of("http://localhost:3000"), true, null, null));
+                "authenticated", true, 60L, List.of("http://localhost:3000"), true, null, null, null));
         assertThat(service.generateToken(DemoTokenService.AUTH_ID_ADMIN,
                 "admin@dealflow.demo", "Demo Admin")).isNotBlank();
     }

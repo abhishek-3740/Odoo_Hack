@@ -7,14 +7,19 @@ import { LoadingScreen } from './components/common/LoadingState';
 import { CustomerLayout } from './layouts/CustomerLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 
-// Auth Pages
+// Public & Auth Pages
+import { HomePage } from './pages/public/HomePage';
 import { LoginPage } from './pages/auth/LoginPage';
+import { SignupPage } from './pages/auth/SignupPage';
 
 // Customer Pages
+import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
 import { CustomerCatalogPage } from './pages/customer/CustomerCatalogPage';
 import { CustomerQuotesPage } from './pages/customer/CustomerQuotesPage';
 import { CustomerQuoteDetailPage } from './pages/customer/CustomerQuoteDetailPage';
 import { CustomerInvoicesPage } from './pages/customer/CustomerInvoicesPage';
+import { CustomerProfilePage } from './pages/customer/CustomerProfilePage';
+import { CustomerSettingsPage } from './pages/customer/CustomerSettingsPage';
 
 // Admin Pages
 import { AdminOverviewPage } from './pages/admin/AdminOverviewPage';
@@ -29,24 +34,6 @@ import { CatalogAdminPage } from './pages/admin/system/CatalogAdminPage';
 import { GovernancePage } from './pages/admin/system/GovernancePage';
 import { OperationsPage } from './pages/admin/system/OperationsPage';
 
-function RootRedirect() {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user.role === 'CUSTOMER') {
-    return <Navigate to="/customer" replace />;
-  }
-
-  return <Navigate to="/admin" replace />;
-}
-
 // Protected route guard for Admin pages
 function AdminGuard({ children }) {
   const { user, loading } = useAuth();
@@ -56,7 +43,7 @@ function AdminGuard({ children }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login?next=/admin" replace />;
   }
 
   // Allow internal roles to access admin
@@ -72,18 +59,20 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Authentication */}
+          {/* Public storefront & authentication */}
+          <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
 
-          {/* Root Redirect */}
-          <Route path="/" element={<RootRedirect />} />
-
-          {/* Customer Facing Storefront & Portal */}
+          {/* Customer Portal (guarded inside the layout) */}
           <Route path="/customer" element={<CustomerLayout />}>
-            <Route index element={<CustomerCatalogPage />} />
+            <Route index element={<CustomerDashboardPage />} />
+            <Route path="catalog" element={<CustomerCatalogPage />} />
             <Route path="quotes" element={<CustomerQuotesPage />} />
             <Route path="quotes/:id" element={<CustomerQuoteDetailPage />} />
             <Route path="invoices" element={<CustomerInvoicesPage />} />
+            <Route path="profile" element={<CustomerProfilePage />} />
+            <Route path="settings" element={<CustomerSettingsPage />} />
           </Route>
 
           {/* Enterprise Internal Workspace */}
@@ -125,8 +114,8 @@ export default function App() {
             </Route>
           </Route>
 
-          {/* Catch-all fallback */}
-          <Route path="*" element={<RootRedirect />} />
+          {/* Catch-all fallback: the public storefront */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

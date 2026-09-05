@@ -17,10 +17,40 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     Optional<Customer> findByNameIgnoreCase(String name);
 
+    /**
+     * Name search.
+     *
+     * <p>The pattern is built in Java rather than with {@code concat} around a
+     * nullable parameter. A null string parameter reaches PostgreSQL with no
+     * type, which makes {@code '%' || ? || '%'} resolve to the {@code bytea}
+     * concatenation operator and {@code lower(bytea)} does not exist — so an
+     * unfiltered list failed with a 500 rather than returning every row. There
+     * is no null in the query at all now.
+     */
     @Query("""
             select c from Customer c
              where c.active = true
-               and (:search is null or lower(c.name) like lower(concat('%', :search, '%')))
+               and lower(c.name) like :pattern escape '\\'
             """)
-    Page<Customer> search(@Param("search") String search, Pageable pageable);
+    Page<Customer> searchByPattern(@Param("pattern") String pattern, Pageable pageable);
+
+    default Page<Customer> search(String search, Pageable pageable) {
+        return searchByPattern(likePattern(search), pageable);
+    }
+
+    /**
+     * A lower-cased contains pattern; {@code "%"} — match everything — when there
+     * is no search term. Wildcards typed by the user are escaped, so searching
+     * for "50%" looks for that text rather than matching every row.
+     */
+    static String likePattern(String search) {
+        if (search == null || search.isBlank()) {
+            return "%";
+        }
+        String escaped = search.trim()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        return "%" + escaped.toLowerCase(java.util.Locale.ROOT) + "%";
+    }
 }

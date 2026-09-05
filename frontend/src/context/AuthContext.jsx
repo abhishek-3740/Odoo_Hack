@@ -4,6 +4,21 @@ import { initWebSocket, disconnectWebSocket } from '../services/websocket';
 
 const AuthContext = createContext(null);
 
+/** Where a role lands after sign-in; a customer's own preference wins. */
+export function landingPathFor(user) {
+  const role = (user?.role || '').toUpperCase();
+  if (role === 'CUSTOMER') {
+    const landing = user?.preferences?.defaultLanding;
+    if (landing === 'catalog') return '/customer/catalog';
+    if (landing === 'quotes') return '/customer/quotes';
+    return '/customer';
+  }
+  if (role === 'REP') return '/admin/sales/quotes';
+  if (role === 'MANAGER') return '/admin/manager/approvals';
+  if (role === 'FINANCE') return '/admin/finance/approvals';
+  return '/admin';
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(getStoredToken());
@@ -11,7 +26,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch current user details via /api/v1/me
+  // Fetch current user details via /api/v1/me (+ portal preferences for customers)
   const loadCurrentUser = useCallback(async (activeToken) => {
     if (!activeToken) {
       setUser(null);
@@ -21,11 +36,20 @@ export function AuthProvider({ children }) {
     try {
       setLoading(true);
       const profile = await api.get('/me');
-      setUser(profile);
+      let merged = profile;
+      if (profile?.role === 'CUSTOMER') {
+        try {
+          const account = await api.get('/portal/account');
+          merged = { ...profile, preferences: account?.preferences || {}, account };
+        } catch {
+          merged = { ...profile, preferences: {} };
+        }
+      }
+      setUser(merged);
       setError(null);
       // Initialize STOMP websocket for real-time invalidations
       initWebSocket(activeToken);
-      return profile;
+      return merged;
     } catch (err) {
       console.warn('Failed to load user profile with current token:', err);
       // Token might be expired or invalid
@@ -39,15 +63,15 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Fetch demo accounts list
+  // Fetch demo accounts list (only exists when demo auth is switched on)
   const loadDemoAccounts = useCallback(async () => {
     try {
       const accounts = await api.get('/auth/demo-accounts');
       if (Array.isArray(accounts)) {
         setDemoAccounts(accounts);
       }
-    } catch (err) {
-      console.warn('Failed to load demo accounts:', err);
+    } catch {
+      setDemoAccounts([]);
     }
   }, []);
 
@@ -62,19 +86,36 @@ export function AuthProvider({ children }) {
     }
   }, [loadCurrentUser, loadDemoAccounts]);
 
-  // Standard login with credentials
+  const adoptToken = async (newToken) => {
+    setStoredToken(newToken);
+    setToken(newToken);
+    return loadCurrentUser(newToken);
+  };
+
+  // Standard login with credentials (local password or demo persona)
   const login = async (email, password) => {
     try {
       setLoading(true);
       const res = await api.post('/auth/login', { email, password });
-      const newToken = res.accessToken;
-      setStoredToken(newToken);
-      setToken(newToken);
-      const profile = await loadCurrentUser(newToken);
-      return { success: true, profile, role: res.role };
+      const profile = await adoptToken(res.accessToken);
+      return { success: true, profile, role: res.role, targetPath: landingPathFor(profile || res) };
     } catch (err) {
       setError(err.message || 'Login failed');
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, code: err.code, status: err.status };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Storefront self-registration: always a customer account
+  const register = async (payload) => {
+    try {
+      setLoading(true);
+      const res = await api.post('/auth/register', payload);
+      const profile = await adoptToken(res.accessToken);
+      return { success: true, profile, targetPath: landingPathFor(profile || res) };
+    } catch (err) {
+      return { success: false, error: err.message, code: err.code, status: err.status };
     } finally {
       setLoading(false);
     }
@@ -84,27 +125,9 @@ export function AuthProvider({ children }) {
   const switchPersona = async (account) => {
     try {
       setLoading(true);
-      const newToken = account.token;
-      setStoredToken(newToken);
-      setToken(newToken);
-      const profile = await loadCurrentUser(newToken);
-
-      // Determine default landing page
-      let targetPath = '/admin';
+      const profile = await adoptToken(account.token);
       const role = (profile?.role || account.role || '').toUpperCase();
-      if (role === 'CUSTOMER') {
-        targetPath = '/customer';
-      } else if (role === 'REP') {
-        targetPath = '/admin/sales';
-      } else if (role === 'MANAGER') {
-        targetPath = '/admin/manager';
-      } else if (role === 'FINANCE') {
-        targetPath = '/admin/finance';
-      } else if (role === 'ADMIN') {
-        targetPath = '/admin';
-      }
-
-      return { success: true, targetPath, role };
+      return { success: true, targetPath: landingPathFor(profile || { role }), role };
     } catch (err) {
       console.error('Error switching persona:', err);
       return { success: false, error: err.message };
@@ -118,6 +141,10 @@ export function AuthProvider({ children }) {
     setToken('');
     setUser(null);
     disconnectWebSocket();
+  };
+
+  const updateUserLocal = (patch) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
   const hasCapability = (cap) => {
@@ -140,11 +167,13 @@ export function AuthProvider({ children }) {
         error,
         demoAccounts,
         login,
+        register,
         switchPersona,
         logout,
+        updateUserLocal,
         hasCapability,
         hasRole,
-        refreshUser: () => loadCurrentUser(token),
+        refreshUser: () => loadCurrentUser(getStoredToken()),
       }}
     >
       {children}

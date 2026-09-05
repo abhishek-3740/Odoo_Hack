@@ -12,6 +12,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A person's workspace identity.
@@ -55,6 +57,18 @@ public class Profile extends TimestampedEntity {
      */
     @Column(name = "unavailable_until")
     private Instant unavailableUntil;
+
+    /** BCrypt hash for accounts registered through the storefront; null for external identities. */
+    @Column(name = "password_hash")
+    private String passwordHash;
+
+    @Column(name = "phone")
+    private String phone;
+
+    /** Portal UI preferences as raw JSON text; the portal validates the keys. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "preferences", nullable = false)
+    private String preferences = "{}";
 
     protected Profile() {
     }
@@ -137,5 +151,29 @@ public class Profile extends TimestampedEntity {
 
     public void setUnavailableUntil(Instant unavailableUntil) {
         this.unavailableUntil = unavailableUntil;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public String getPreferences() {
+        return preferences;
+    }
+
+    public void setPreferences(String preferences) {
+        this.preferences = preferences;
     }
 }

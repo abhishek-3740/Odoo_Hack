@@ -2,6 +2,7 @@ package com.dealflow.config;
 
 import com.dealflow.auth.models.ProfileAuthenticationException;
 import com.dealflow.auth.service.DemoTokenService;
+import com.dealflow.auth.service.LocalAuthService;
 import com.dealflow.auth.service.ProfileJwtAuthenticationConverter;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jwt.SignedJWT;
@@ -83,7 +84,10 @@ public class SecurityConfig {
                         // the session is closed.
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/v1/auth/demo-accounts", "/api/v1/auth/demo-token",
-                                "/api/v1/auth/login").permitAll()
+                                "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/options")
+                        .permitAll()
+                        // The storefront homepage: list prices only, no stock counts.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/**").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
@@ -115,15 +119,52 @@ public class SecurityConfig {
     public JwtDecoder jwtDecoder() {
         JwtDecoder supabaseDecoder = supabaseJwtDecoder();
         JwtDecoder demoDecoder = demoJwtDecoder();
+        JwtDecoder localDecoder = localJwtDecoder();
         return token -> {
-            if (isDemoToken(token)) {
+            if (isIssuedBy(token, DemoTokenService.DEMO_ISSUER, "dealflow_demo")) {
                 if (demoDecoder == null) {
                     throw new JwtException("Demo authentication is disabled.");
                 }
                 return demoDecoder.decode(token);
             }
+            if (isIssuedBy(token, LocalAuthService.LOCAL_ISSUER, LocalAuthService.LOCAL_CLAIM)) {
+                if (localDecoder == null) {
+                    throw new JwtException("Email/password authentication is not configured.");
+                }
+                return localDecoder.decode(token);
+            }
             return supabaseDecoder.decode(token);
         };
+    }
+
+    /**
+     * Storefront signup tokens. Same shape as the demo decoder, but its own
+     * issuer, audience and marker claim, and a secret that may differ.
+     */
+    private JwtDecoder localJwtDecoder() {
+        String secret = localAuthSecret();
+        if (secret == null) {
+            return null;
+        }
+        SecretKeySpec key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(Duration.ofSeconds(properties.auth().clockSkewSeconds())),
+                new JwtIssuerValidator(LocalAuthService.LOCAL_ISSUER),
+                audienceValidator(LocalAuthService.LOCAL_AUDIENCE),
+                new JwtClaimValidator<Boolean>(LocalAuthService.LOCAL_CLAIM, Boolean.TRUE::equals)));
+        return decoder;
+    }
+
+    /** Mirrors {@link LocalAuthService#signingSecret()} without needing the bean at config time. */
+    private String localAuthSecret() {
+        String local = properties.auth().localJwtSecret();
+        if (local != null && local.getBytes(StandardCharsets.UTF_8).length >= 32) {
+            return local;
+        }
+        AppProperties.Demo demo = properties.demo();
+        String fallback = demo == null ? null : demo.jwtSecret();
+        return fallback != null && fallback.getBytes(StandardCharsets.UTF_8).length >= 32 ? fallback : null;
     }
 
     private JwtDecoder supabaseJwtDecoder() {
@@ -176,12 +217,12 @@ public class SecurityConfig {
     }
 
     /** Routing uses untrusted claims only to select a decoder; validation still happens inside that decoder. */
-    private boolean isDemoToken(String token) {
+    private boolean isIssuedBy(String token, String issuer, String markerClaim) {
         try {
             SignedJWT parsed = SignedJWT.parse(token);
             return JWSAlgorithm.HS256.equals(parsed.getHeader().getAlgorithm())
-                    && DemoTokenService.DEMO_ISSUER.equals(parsed.getJWTClaimsSet().getIssuer())
-                    && Boolean.TRUE.equals(parsed.getJWTClaimsSet().getBooleanClaim("dealflow_demo"));
+                    && issuer.equals(parsed.getJWTClaimsSet().getIssuer())
+                    && Boolean.TRUE.equals(parsed.getJWTClaimsSet().getBooleanClaim(markerClaim));
         } catch (Exception ignored) {
             return false;
         }

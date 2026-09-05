@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { api, formatINR, formatDate } from '../../services/api';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../components/common/LoadingState';
-import { Receipt, Calendar, CreditCard, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { useDealEvents } from '../../hooks/useDealEvents';
+import { Receipt, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 export function CustomerInvoicesPage() {
   const [invoices, setInvoices] = useState([]);
@@ -25,6 +26,12 @@ export function CustomerInvoicesPage() {
   useEffect(() => {
     loadInvoices();
   }, []);
+
+  // Invoices are raised on confirmation and on each billing cycle.
+  useDealEvents(
+    (e) => e.type === 'INVOICE_UPDATED' || e.type === 'ORDER_CREATED',
+    () => loadInvoices()
+  );
 
   if (loading) {
     return (
