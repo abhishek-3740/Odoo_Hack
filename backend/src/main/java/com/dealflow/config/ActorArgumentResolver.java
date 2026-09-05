@@ -1,7 +1,7 @@
 package com.dealflow.config;
 
-import com.dealflow.auth.Actor;
-import com.dealflow.auth.CurrentActor;
+import com.dealflow.auth.models.Actor;
+import com.dealflow.auth.models.CurrentActor;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.support.WebDataBinderFactory;

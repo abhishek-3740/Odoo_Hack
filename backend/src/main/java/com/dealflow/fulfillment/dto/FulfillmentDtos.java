@@ -1,5 +1,10 @@
 package com.dealflow.fulfillment.dto;
 
+
+import com.dealflow.fulfillment.models.*;
+import com.dealflow.fulfillment.repo.*;
+import com.dealflow.fulfillment.service.*;
+import com.dealflow.fulfillment.controller.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;

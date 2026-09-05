@@ -1,5 +1,10 @@
 package com.dealflow.catalog.dto;
 
+
+import com.dealflow.catalog.models.*;
+import com.dealflow.catalog.repo.*;
+import com.dealflow.catalog.service.*;
+import com.dealflow.catalog.controller.*;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

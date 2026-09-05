@@ -70,7 +70,7 @@ public record AppProperties(
      * explicit alternatives; none of them is an unspoken rule (edge case E12).
      */
     public record Allocation(
-            @DefaultValue("BALANCED") com.dealflow.fulfillment.engine.AllocationModel.Mode mode,
+            @DefaultValue("BALANCED") com.dealflow.fulfillment.models.AllocationModel.Mode mode,
             @DefaultValue("5000") @Min(0) long extraShipmentPenaltyMinor,
             @DefaultValue("8") @Min(1) int exhaustiveWarehouseLimit) {
     }

@@ -1,7 +1,7 @@
 package com.dealflow.config;
 
-import com.dealflow.auth.ProfileAuthenticationException;
-import com.dealflow.auth.ProfileJwtAuthenticationConverter;
+import com.dealflow.auth.models.ProfileAuthenticationException;
+import com.dealflow.auth.service.ProfileJwtAuthenticationConverter;
 import com.dealflow.shared.error.ErrorCode;
 import com.dealflow.shared.web.ErrorResponse;
 import tools.jackson.databind.ObjectMapper;
@@ -78,6 +78,7 @@ public class SecurityConfig {
                         // follows must still present a valid token promptly or
                         // the session is closed.
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth

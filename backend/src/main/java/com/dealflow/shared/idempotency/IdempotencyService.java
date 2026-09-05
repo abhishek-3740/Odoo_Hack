@@ -1,6 +1,6 @@
 package com.dealflow.shared.idempotency;
 
-import com.dealflow.auth.Actor;
+import com.dealflow.auth.models.Actor;
 import com.dealflow.shared.error.ApiException;
 import com.dealflow.shared.error.ErrorCode;
 import com.dealflow.shared.time.BusinessClock;

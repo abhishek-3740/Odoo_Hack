@@ -1,5 +1,8 @@
 package com.dealflow.reporting.dto;
 
+
+import com.dealflow.reporting.service.*;
+import com.dealflow.reporting.controller.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;

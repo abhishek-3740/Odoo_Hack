@@ -6,9 +6,9 @@ spring:
     # Local Supabase Postgres by default. Point SPRING_DATASOURCE_URL at the
     # session pooler (not the transaction pooler) for a hosted project: this is a
     # persistent backend that relies on prepared statements and advisory locks.
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:54322/postgres}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/postgres}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:23280311}
     hikari:
       # Deliberately small. The ceiling that matters is the database's, shared
       # across every replica, migration tool and psql session.
@@ -71,7 +71,7 @@ spring:
       thread-name-prefix: dealflow-job-
 
 server:
-  port: ${PORT:8080}
+  port: ${PORT:8081}
   address: 0.0.0.0
   shutdown: graceful
   error:
@@ -160,8 +160,8 @@ dealflow:
     outbox-max-attempts: 8
 
   demo:
-    mode: ${DEMO_MODE:false}
-    seed-on-startup: ${DEMO_SEED:false}
+    mode: ${DEMO_MODE:true}
+    seed-on-startup: ${DEMO_SEED:true}
     business-date-override: ${DEMO_BUSINESS_DATE:}
 
   limits:
