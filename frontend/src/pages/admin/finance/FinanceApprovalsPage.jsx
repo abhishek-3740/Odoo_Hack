@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, formatINR, formatPercent, formatDate, formatDateTime } from '../../../services/api';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
@@ -13,6 +13,7 @@ import {
   Eye,
   RotateCcw,
 } from 'lucide-react';
+import { useDealEvents } from '../../../hooks/useDealEvents';
 
 export function FinanceApprovalsPage() {
   const [approvals, setApprovals] = useState([]);
@@ -27,11 +28,11 @@ export function FinanceApprovalsPage() {
   const [decisionReason, setDecisionReason] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
 
-  const loadApprovals = async () => {
+  const loadApprovals = useCallback(async () => {
     try {
       setRefreshing(true);
       const res = await api.get(`/approval-requests?status=${statusFilter}`);
-      const list = res?.content || (Array.isArray(res) ? res : []);
+      const list = res?.items || res?.content || (Array.isArray(res) ? res : []);
       // Filter for Step 2 or Finance
       setApprovals(list.filter((x) => x.step === 2 || x.requiredRole === 'FINANCE'));
     } catch (err) {
@@ -40,11 +41,17 @@ export function FinanceApprovalsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [statusFilter]);
 
   useEffect(() => {
     loadApprovals();
-  }, [statusFilter]);
+  }, [loadApprovals]);
+
+  // Auto-refresh when a finance-relevant approval event arrives over WebSocket.
+  useDealEvents(
+    (e) => e.type === 'APPROVAL_UPDATED' || e.type === 'QUOTE_SUBMITTED',
+    loadApprovals
+  );
 
   const handleOpenDecision = (item, type) => {
     setSelectedApproval(item);
@@ -61,7 +68,8 @@ export function FinanceApprovalsPage() {
     try {
       const payload = {
         decision: decisionType,
-        decisionReason: decisionReason.trim() || `Step 2 Finance ${decisionType} sign-off`,
+        expectedRevisionId: selectedApproval.revisionId,
+        reason: decisionReason.trim() || `Step 2 Finance ${decisionType} sign-off`,
       };
 
       await api.postWithIdempotency(`/approval-requests/${selectedApproval.id}/decisions`, payload);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, formatINR, formatPercent, formatDate, formatDateTime } from '../../../services/api';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
@@ -16,6 +16,7 @@ import {
   Eye,
   Building2,
 } from 'lucide-react';
+import { useDealEvents } from '../../../hooks/useDealEvents';
 
 export function ManagerApprovalsPage() {
   const [approvals, setApprovals] = useState([]);
@@ -28,17 +29,19 @@ export function ManagerApprovalsPage() {
   const [decisionModalOpen, setDecisionModalOpen] = useState(false);
   const [decisionType, setDecisionType] = useState('APPROVE'); // APPROVE | REJECT | RETURN_FOR_REVISION
   const [decisionReason, setDecisionReason] = useState('');
+  const [decisionError, setDecisionError] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState(null);
 
   // Side-by-side Inspection Drawer
   const [inspectionData, setInspectionData] = useState(null);
   const [inspectModalOpen, setInspectModalOpen] = useState(false);
 
-  const loadApprovals = async () => {
+  const loadApprovals = useCallback(async () => {
     try {
       setRefreshing(true);
       const res = await api.get(`/approval-requests?status=${statusFilter}`);
-      const list = res?.content || (Array.isArray(res) ? res : []);
+      const list = res?.items || res?.content || (Array.isArray(res) ? res : []);
       setApprovals(list);
     } catch (err) {
       console.error('Failed to load approval requests:', err);
@@ -46,16 +49,24 @@ export function ManagerApprovalsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [statusFilter]);
 
   useEffect(() => {
     loadApprovals();
-  }, [statusFilter]);
+  }, [loadApprovals]);
+
+  // Auto-refresh when an approval or quote event arrives over WebSocket.
+  const MANAGER_EVENTS = new Set(['APPROVAL_UPDATED', 'QUOTE_SUBMITTED', 'QUOTE_REVISED']);
+  useDealEvents(
+    (e) => MANAGER_EVENTS.has(e.type),
+    loadApprovals
+  );
 
   const handleOpenDecision = (item, type) => {
     setSelectedApproval(item);
     setDecisionType(type);
     setDecisionReason('');
+    setDecisionError('');
     setDecisionModalOpen(true);
   };
 
@@ -63,10 +74,7 @@ export function ManagerApprovalsPage() {
     setSelectedApproval(item);
     try {
       // Evaluate quote to get line terms and risk breakdown
-      const evalRes = await api.post(`/quotes/${item.quoteId}/evaluations`, {
-        lines: [],
-        orderDiscountBp: 0,
-      }).catch(() => null);
+      const evalRes = await api.get(`/quotes/${item.quoteId}`);
       setInspectionData(evalRes);
       setInspectModalOpen(true);
     } catch (err) {
@@ -79,18 +87,24 @@ export function ManagerApprovalsPage() {
     if (!selectedApproval) return;
 
     setSubmittingDecision(true);
+    setDecisionError('');
     try {
       const payload = {
         decision: decisionType,
-        decisionReason: decisionReason.trim() || `Step 1 ${decisionType} decision recorded`,
+        expectedRevisionId: selectedApproval.revisionId,
+        reason: decisionReason.trim() || `Step 1 ${decisionType} decision recorded`,
       };
 
       await api.postWithIdempotency(`/approval-requests/${selectedApproval.id}/decisions`, payload);
       setDecisionModalOpen(false);
-      alert(`Approval decision [${decisionType}] recorded successfully!`);
+      setFeedbackMessage({
+        type: 'success',
+        text: `Approval decision [${decisionType}] recorded successfully for quote ${selectedApproval.quoteReference || ''}!`,
+      });
+      setTimeout(() => setFeedbackMessage(null), 6000);
       loadApprovals();
     } catch (err) {
-      alert('Decision submission failed: ' + err.message);
+      setDecisionError(err.message || 'Decision submission failed. Please verify permissions or deal state.');
     } finally {
       setSubmittingDecision(false);
     }
@@ -146,6 +160,29 @@ export function ManagerApprovalsPage() {
           </div>
         </div>
       </div>
+
+      {/* Action feedback message */}
+      {feedbackMessage && (
+        <div
+          role="status"
+          className={`p-4 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+            feedbackMessage.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{feedbackMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setFeedbackMessage(null)}
+            className="text-slate-400 hover:text-slate-600 font-bold px-1"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Approvals Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -209,26 +246,36 @@ export function ManagerApprovalsPage() {
                       </button>
 
                       {item.status === 'PENDING' && (
-                        <>
-                          <button
-                            onClick={() => handleOpenDecision(item, 'APPROVE')}
-                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded text-xs transition-colors"
+                        item.actionable === false ? (
+                          <span
+                            className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[11px] font-semibold inline-flex items-center space-x-1"
+                            title={item.blockedReason || 'Prior step pending'}
                           >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => handleOpenDecision(item, 'RETURN_FOR_REVISION')}
-                            className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold rounded text-xs transition-colors"
-                          >
-                            Return
-                          </button>
-                          <button
-                            onClick={() => handleOpenDecision(item, 'REJECT')}
-                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded text-xs transition-colors"
-                          >
-                            Reject
-                          </button>
-                        </>
+                            <Clock className="w-3 h-3" />
+                            <span>Blocked</span>
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleOpenDecision(item, 'APPROVE')}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded text-xs transition-colors"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleOpenDecision(item, 'RETURN_FOR_REVISION')}
+                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold rounded text-xs transition-colors"
+                            >
+                              Return
+                            </button>
+                            <button
+                              onClick={() => handleOpenDecision(item, 'REJECT')}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded text-xs transition-colors"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )
                       )}
                     </td>
                   </tr>
@@ -313,6 +360,13 @@ export function ManagerApprovalsPage() {
         subtitle={`Quotation Reference: ${selectedApproval?.quoteReference}`}
       >
         <form onSubmit={handleSubmitDecision} className="space-y-4 text-xs">
+          {decisionError && (
+            <div role="alert" className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 font-medium flex items-start space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{decisionError}</span>
+            </div>
+          )}
+
           <div
             className={`p-3 rounded-lg border ${
               decisionType === 'APPROVE'

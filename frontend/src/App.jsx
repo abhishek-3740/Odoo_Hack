@@ -11,6 +11,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { HomePage } from './pages/public/HomePage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { SignupPage } from './pages/auth/SignupPage';
+import { StaffSignupPage } from './pages/auth/StaffSignupPage';
 
 // Customer Pages
 import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
@@ -33,6 +34,8 @@ import { BillingPage } from './pages/admin/finance/BillingPage';
 import { CatalogAdminPage } from './pages/admin/system/CatalogAdminPage';
 import { GovernancePage } from './pages/admin/system/GovernancePage';
 import { OperationsPage } from './pages/admin/system/OperationsPage';
+import { AssistantDock } from './components/assistant/AssistantDock';
+import { ReviewInboxPage } from './pages/admin/ReviewInboxPage';
 
 // Protected route guard for Admin pages
 function AdminGuard({ children }) {
@@ -63,6 +66,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/signup/staff" element={<StaffSignupPage />} />
 
           {/* Customer Portal (guarded inside the layout) */}
           <Route path="/customer" element={<CustomerLayout />}>
@@ -85,6 +89,7 @@ export default function App() {
             }
           >
             <Route index element={<AdminOverviewPage />} />
+            <Route path="reviews" element={<ReviewInboxPage />} />
 
             {/* Sales Workspace */}
             <Route path="sales">
@@ -117,6 +122,7 @@ export default function App() {
           {/* Catch-all fallback: the public storefront */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        <AssistantDock />
       </BrowserRouter>
     </AuthProvider>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api, formatINR, formatPercent, formatDate, formatDateTime, bpToPercent, percentToBp } from '../../../services/api';
 import { StatusBadge } from '../../../components/common/StatusBadge';
@@ -25,9 +25,19 @@ import {
   Building2,
 } from 'lucide-react';
 
+import { RecommendationPanel } from '../../../components/recommendations/RecommendationPanel';
+import { NegotiationDesk } from '../../../components/customer/NegotiationDesk';
+import { useAuth } from '../../../context/AuthContext';
+
 export function QuoteBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [notice, setNotice] = useState('');
+  const evaluationSequence = useRef(0);
 
   // Quote Data
   const [evaluation, setEvaluation] = useState(null);
@@ -38,7 +48,7 @@ export function QuoteBuilderPage() {
   // Editable Draft Terms
   const [draftLines, setDraftLines] = useState([]);
   const [orderDiscountBp, setOrderDiscountBp] = useState(0);
-  const [backorderTerms, setBackorderTerms] = useState('SPLIT_ALLOWED');
+  const [backorderTerms, setBackorderTerms] = useState('ALLOW_BACKORDER');
 
   // Catalog Reference for Adding Items
   const [products, setProducts] = useState([]);
@@ -66,24 +76,20 @@ export function QuoteBuilderPage() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [historyLogs, setHistoryLogs] = useState([]);
 
-  // Smart Recommendations
-  const [recommendations, setRecommendations] = useState([]);
-  const [recsLoading, setRecsLoading] = useState(false);
-
   // Load catalog items for dropdowns
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const [prodRes, varRes, planRes] = await Promise.all([
-          api.get('/products').catch(() => []),
-          api.get('/variants').catch(() => []),
-          api.get('/subscription-plans').catch(() => []),
+        const [prodRes, planRes] = await Promise.all([
+          api.get('/products?pageSize=100'), api.get('/subscription-plans'),
         ]);
-        setProducts(Array.isArray(prodRes) ? prodRes : []);
-        setVariants(Array.isArray(varRes) ? varRes : []);
+        const catalog = prodRes.items || prodRes.content || (Array.isArray(prodRes) ? prodRes : []);
+        const variantGroups = await Promise.all(catalog.map(p => api.get(`/variants?productId=${p.id}`)));
+        setProducts(catalog);
+        setVariants(variantGroups.flat());
         setPlans(Array.isArray(planRes) ? planRes : []);
       } catch (err) {
-        console.error('Failed to load catalog:', err);
+        setActionError('Catalog could not load: ' + err.message);
       }
     }
     loadCatalog();
@@ -93,16 +99,10 @@ export function QuoteBuilderPage() {
   const loadQuoteEvaluation = async () => {
     try {
       setLoading(true);
-      // Run evaluation with empty body to evaluate current state
-      const evalRes = await api.post(`/quotes/${id}/evaluations`, {
-        lines: [],
-        orderDiscountBp: 0,
-      }).catch(async () => {
-        // Fallback: evaluate existing state
-        return await api.get(`/quotes/${id}`);
-      });
-
+      const evalRes = await api.get(`/quotes/${id}`);
       setEvaluation(evalRes);
+      setDirty(false);
+      setError(null);
       if (evalRes?.lines) {
         setDraftLines(
           evalRes.lines.map((l) => ({
@@ -120,7 +120,7 @@ export function QuoteBuilderPage() {
           }))
         );
         setOrderDiscountBp(evalRes.orderDiscountBp || 0);
-        setBackorderTerms(evalRes.backorderTerms || 'SPLIT_ALLOWED');
+        setBackorderTerms(evalRes.backorderTerms || 'ALLOW_BACKORDER');
       }
     } catch (err) {
       console.error('Failed to load quote evaluation:', err);
@@ -132,25 +132,14 @@ export function QuoteBuilderPage() {
 
   useEffect(() => {
     loadQuoteEvaluation();
-    loadRecommendations();
   }, [id]);
-
-  // Load smart recommendations
-  const loadRecommendations = async () => {
-    try {
-      setRecsLoading(true);
-      const data = await api.get(`/quotes/${id}/recommendations`).catch(() => []);
-      setRecommendations(Array.isArray(data) ? data : []);
-    } catch {
-      // Recommendations may be empty if not enough history
-    } finally {
-      setRecsLoading(false);
-    }
-  };
 
   // Real-time evaluation recalculation when lines or discount change
   const triggerReEvaluation = async (linesToEval = draftLines, discountBp = orderDiscountBp) => {
-    if (linesToEval.length === 0) return;
+    setDirty(true);
+    const sequence = ++evaluationSequence.current;
+    if (linesToEval.length === 0) { setActionError('Add at least one item before saving.'); setEvaluating(false); return; }
+    setActionError('');
     setEvaluating(true);
     try {
       const payload = {
@@ -169,6 +158,7 @@ export function QuoteBuilderPage() {
       };
 
       const res = await api.post(`/quotes/${id}/evaluations`, payload);
+      if (sequence !== evaluationSequence.current) return;
       setEvaluation(res);
       // Sync lines with evaluated output (prices, margins, etc.)
       if (res.lines) {
@@ -189,9 +179,9 @@ export function QuoteBuilderPage() {
         );
       }
     } catch (err) {
-      console.warn('Re-evaluation error:', err);
+      if (sequence === evaluationSequence.current) setActionError(err.message);
     } finally {
-      setEvaluating(false);
+      if (sequence === evaluationSequence.current) setEvaluating(false);
     }
   };
 
@@ -241,8 +231,7 @@ export function QuoteBuilderPage() {
 
   // Update line discount or quantity
   const handleLineChange = (index, field, value) => {
-    const updated = [...draftLines];
-    updated[index][field] = value;
+    const updated = draftLines.map((line, i) => i === index ? { ...line, [field]: value } : line);
     setDraftLines(updated);
     // Debounce re-eval
     triggerReEvaluation(updated, orderDiscountBp);
@@ -250,6 +239,8 @@ export function QuoteBuilderPage() {
 
   // Save Revision
   const handleSaveRevision = async () => {
+    if (saving || evaluating || !draftLines.length) return;
+    setSaving(true); setActionError('');
     try {
       const payload = {
         lines: draftLines.map((l) => ({
@@ -268,15 +259,16 @@ export function QuoteBuilderPage() {
 
       const res = await api.post(`/quotes/${id}/revisions`, payload);
       setEvaluation(res);
-      alert(`Revision #${res.revisionNo} successfully saved!`);
-      loadQuoteEvaluation();
+      setNotice(`Revision #${res.revisionNo} saved.`);
+      await loadQuoteEvaluation();
     } catch (err) {
-      alert('Failed to save revision: ' + err.message);
-    }
+      setActionError('Could not save: ' + err.message);
+    } finally { setSaving(false); }
   };
 
   // Submit for Approval
   const handleSubmitForApproval = async () => {
+    if (dirty || evaluating || saving) { setActionError('Save current edits before submitting.'); return; }
     setSubmitting(true);
     try {
       const payload = {
@@ -298,6 +290,7 @@ export function QuoteBuilderPage() {
 
   // Share with Customer
   const handleShareQuote = async () => {
+    if (dirty || evaluating || saving) { setActionError('Save current edits before sharing.'); return; }
     try {
       const res = await api.post(`/quotes/${id}/shares`, {});
       setShareResult(res);
@@ -327,33 +320,12 @@ export function QuoteBuilderPage() {
   // Load History
   const handleOpenHistory = async () => {
     try {
-      const history = await api.get(`/quotes/${id}/history`).catch(() => []);
+      const history = await api.get(`/quotes/${id}/history`);
       setHistoryLogs(Array.isArray(history) ? history : []);
       setHistoryDrawerOpen(true);
     } catch (err) {
       alert('Failed to load history: ' + err.message);
     }
-  };
-
-  // Add Recommended Item
-  const handleAddRecommendation = (rec) => {
-    const v = variants.find((x) => x.id === rec.candidateVariantId);
-    if (!v) return;
-    const newItem = {
-      lineKey: 'rec-' + Math.random().toString(36).substring(2, 7),
-      variantId: v.id,
-      planId: null,
-      description: v.name || v.sku,
-      quantity: 1,
-      lineDiscountBp: 0,
-      unitPrice: v.basePrice,
-      source: 'RECOMMENDED',
-    };
-    const updated = [...draftLines, newItem];
-    setDraftLines(updated);
-    triggerReEvaluation(updated, orderDiscountBp);
-    // Dismiss recommendation from list
-    setRecommendations(recommendations.filter((r) => r.candidateVariantId !== rec.candidateVariantId));
   };
 
   if (loading) {
@@ -364,6 +336,9 @@ export function QuoteBuilderPage() {
     );
   }
 
+  if (error) return <section className="panel empty-state"><h1>Quotation could not load</h1><p role="alert">{error}</p><button className="button-primary" onClick={loadQuoteEvaluation}>Try again</button></section>;
+
+  const canEdit = (user?.role === 'ADMIN' || user?.profileId === evaluation?.ownerProfileId) && !evaluation?.gates?.orderExists && !['CONFIRMED', 'CANCELED', 'LOST', 'EXPIRED'].includes(evaluation?.stage);
   const totals = evaluation?.totals || {};
   const risk = evaluation?.risk || {};
   const stockPreview = evaluation?.stockPreview || [];
@@ -380,6 +355,9 @@ export function QuoteBuilderPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {actionError && <p className="error-notice" role="alert">{actionError}</p>}
+      {notice && <p className="notice" role="status">{notice}</p>}
+      {dirty && <p className="notice">Unsaved changes. Save before applying recommendations, sharing or submitting.</p>}
       {/* Top Header & Deal Actions */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center space-x-3">
@@ -391,7 +369,7 @@ export function QuoteBuilderPage() {
           </Link>
           <div>
             <div className="flex items-center space-x-2.5">
-              <h2 className="text-xl font-bold text-slate-900">{evaluation?.reference || 'Quotation Builder'}</h2>
+              <h1 className="text-xl font-bold text-slate-900">{evaluation?.reference || 'Quotation Builder'}</h1>
               <StatusBadge status={evaluation?.stage} />
               <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                 Rev #{evaluation?.revisionNo || 1}
@@ -428,14 +406,16 @@ export function QuoteBuilderPage() {
 
           <button
             onClick={handleSaveRevision}
+            disabled={!canEdit || saving || evaluating || !draftLines.length}
             className="px-3.5 py-2 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
           >
             <Save className="w-3.5 h-3.5 text-slate-600" />
-            <span>Save Revision</span>
+            <span>{saving ? 'Saving…' : 'Save Revision'}</span>
           </button>
 
           <button
             onClick={() => setSubmitModalOpen(true)}
+            disabled={!canEdit || dirty || saving || evaluating}
             className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
           >
             <Send className="w-3.5 h-3.5" />
@@ -444,13 +424,14 @@ export function QuoteBuilderPage() {
 
           <button
             onClick={handleShareQuote}
+            disabled={!canEdit || dirty || saving || evaluating}
             className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
           >
             <Share2 className="w-3.5 h-3.5" />
             <span>Share Customer Portal</span>
           </button>
 
-          {evaluation?.stage === 'SHARED_WITH_CUSTOMER' && (
+          {canEdit && evaluation?.revisionSource === 'CUSTOMER' && !evaluation?.gates?.sellerAdopted && !evaluation?.gates?.orderExists && (
             <button
               onClick={handleAdoptCounteroffer}
               className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
@@ -481,18 +462,18 @@ export function QuoteBuilderPage() {
               <span className="text-xs text-slate-500">Approval Requirement:</span>
               <span
                 className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                  risk.requiredLevel === 'STEP_2_FINANCE'
+                  risk.requiredLevel === 'MANAGER_FINANCE'
                     ? 'bg-rose-50 text-rose-700 border-rose-200'
-                    : risk.requiredLevel === 'STEP_1_MANAGER'
+                    : risk.requiredLevel === 'MANAGER'
                     ? 'bg-amber-50 text-amber-700 border-amber-200'
                     : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 }`}
               >
-                {risk.requiredLevel === 'STEP_2_FINANCE'
+                {risk.requiredLevel === 'MANAGER_FINANCE'
                   ? 'Step 2: Finance Approval Required'
-                  : risk.requiredLevel === 'STEP_1_MANAGER'
+                  : risk.requiredLevel === 'MANAGER'
                   ? 'Step 1: Manager Approval Required'
-                  : 'Pre-Approved (Within Ceilings)'}
+                  : 'Within policy · Submit to validate'}
               </span>
             </div>
           </div>
@@ -538,6 +519,7 @@ export function QuoteBuilderPage() {
                 </h3>
               </div>
               <button
+                disabled={!canEdit}
                 onClick={() => setAddItemModalOpen(true)}
                 className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors shadow-xs"
               >
@@ -578,6 +560,7 @@ export function QuoteBuilderPage() {
                           <input
                             type="number"
                             min="1"
+                            aria-label={`Quantity for ${line.description}`} disabled={!canEdit}
                             value={line.quantity}
                             onChange={(e) => handleLineChange(idx, 'quantity', parseInt(e.target.value, 10) || 1)}
                             className="w-16 p-1 border border-slate-200 rounded text-xs bg-white text-center font-medium"
@@ -592,6 +575,7 @@ export function QuoteBuilderPage() {
                               type="number"
                               min="0"
                               max="99"
+                              aria-label={`Discount percent for ${line.description}`} disabled={!canEdit}
                               value={bpToPercent(line.lineDiscountBp)}
                               onChange={(e) =>
                                 handleLineChange(idx, 'lineDiscountBp', percentToBp(e.target.value))
@@ -619,7 +603,8 @@ export function QuoteBuilderPage() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
-                            onClick={() => handleRemoveLine(idx)}
+                            aria-label={`Remove ${line.description}`} disabled={!canEdit}
+                              onClick={() => handleRemoveLine(idx)}
                             className="text-slate-400 hover:text-rose-600 p-1"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -668,62 +653,11 @@ export function QuoteBuilderPage() {
             </div>
           )}
 
-          {/* Smart Co-Purchase Recommendations */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-4 h-4 text-indigo-600" />
-                <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider">
-                  Smart Co-Purchase Recommendations
-                </h3>
-              </div>
-              <span className="text-[11px] text-slate-400">Collaborative filtering model</span>
-            </div>
-
-            {recsLoading ? (
-              <div className="py-4 text-center">
-                <LoadingSpinner size="sm" />
-              </div>
-            ) : recommendations.length === 0 ? (
-              <div className="text-slate-400 text-xs text-center py-4">
-                No co-purchase recommendations triggered for current deal lines.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {recommendations.map((rec, i) => (
-                  <div
-                    key={i}
-                    className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-xs text-slate-900">{rec.candidateName || rec.reason}</span>
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded">
-                          {Math.round((rec.confidence || 0.85) * 100)}% Match
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                        Frequently purchased alongside selected hardware packages with positive contribution.
-                      </p>
-                    </div>
-
-                    <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-800 tabular-nums">
-                        {formatINR(rec.price)}
-                      </span>
-                      <button
-                        onClick={() => handleAddRecommendation(rec)}
-                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add to Deal</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <RecommendationPanel quoteId={id} refreshKey={`${evaluation?.revisionId}:${evaluation?.rowVersion}`}
+            dirty={dirty || evaluating || saving} readOnly={!canEdit}
+            onApplied={loadQuoteEvaluation} />
+          <NegotiationDesk quoteId={id} refreshKey={evaluation?.rowVersion}
+            canReply={user?.role === 'ADMIN' || user?.id === evaluation?.ownerProfileId || user?.profileId === evaluation?.ownerProfileId} />
         </div>
 
         {/* Right Col: Financials, Gate Checks & Deal Terms */}
@@ -765,6 +699,7 @@ export function QuoteBuilderPage() {
                   type="number"
                   min="0"
                   max="9999"
+                  aria-label="Order discount in basis points" disabled={!canEdit}
                   value={orderDiscountBp}
                   onChange={(e) => {
                     const bp = parseInt(e.target.value, 10) || 0;
@@ -859,7 +794,7 @@ export function QuoteBuilderPage() {
                 <option value="">-- Choose Variant --</option>
                 {variants.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.name || v.sku} — {formatINR(v.basePrice)}
+                    {v.name || v.sku} — priced for customer when added
                   </option>
                 ))}
               </select>
@@ -1019,12 +954,12 @@ export function QuoteBuilderPage() {
             historyLogs.map((log, i) => (
               <div key={i} className="pt-2 pb-2 space-y-1">
                 <div className="flex justify-between font-semibold text-slate-800">
-                  <span>Rev #{log.revisionNo || 1} • {log.action || 'REVISION_SAVED'}</span>
+                  <span>{log.action?.replaceAll('_', ' ') || 'Deal activity'}</span>
                   <span className="text-[11px] text-slate-400">{formatDateTime(log.occurredAt || log.createdAt)}</span>
                 </div>
-                <div className="text-slate-600">{log.note || log.description || 'Terms saved.'}</div>
-                {log.authorName && (
-                  <div className="text-[11px] text-slate-400">By: {log.authorName}</div>
+                {log.reason && log.reason !== 'null' && <div className="text-slate-600">{log.reason}</div>}
+                {log.actor && (
+                  <div className="text-[11px] text-slate-500">By: {log.actor}</div>
                 )}
               </div>
             ))

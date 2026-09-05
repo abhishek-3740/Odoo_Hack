@@ -115,6 +115,19 @@ export function SignupPage() {
       }
     >
       <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+        {/* Navigation pill toggle */}
+        <div className="flex bg-slate-100 p-1 rounded-xl mb-4 border border-slate-200">
+          <div className="flex-1 py-1.5 text-center text-xs font-bold text-indigo-700 bg-white rounded-lg shadow-xs border border-indigo-100">
+            Customer Account
+          </div>
+          <Link
+            to={next ? `/signup/staff?next=${encodeURIComponent(next)}` : '/signup/staff'}
+            className="flex-1 py-1.5 text-center text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-lg transition-colors"
+          >
+            Enterprise Staff
+          </Link>
+        </div>
+
         <ErrorBanner>{error}</ErrorBanner>
         {conflict && (
           <div role="alert" className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">

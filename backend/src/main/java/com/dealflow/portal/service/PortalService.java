@@ -7,8 +7,12 @@ import com.dealflow.portal.dto.*;
 import com.dealflow.portal.controller.*;
 import com.dealflow.approvals.service.ApprovalRoutingService;
 import com.dealflow.auth.models.Actor;
+import com.dealflow.billing.dto.BillingDtos.InvoiceLineResponse;
+import com.dealflow.billing.dto.BillingDtos.InvoiceResponse;
 import com.dealflow.billing.models.Invoice;
+import com.dealflow.billing.repo.InvoiceLineRepository;
 import com.dealflow.billing.repo.InvoiceRepository;
+import com.dealflow.billing.service.InvoiceDocumentExporter;
 import com.dealflow.catalog.models.Customer;
 import com.dealflow.catalog.repo.CustomerRepository;
 import com.dealflow.fulfillment.service.StockAvailabilityService;
@@ -93,6 +97,8 @@ public class PortalService {
     private final CustomerRepository customers;
     private final OrderRepository orders;
     private final InvoiceRepository invoices;
+    private final InvoiceLineRepository invoiceLines;
+    private final InvoiceDocumentExporter documentExporter;
     private final QuoteEvaluationService evaluationService;
     private final QuoteAccessPolicy accessPolicy;
     private final QuoteGateListener gateListener;
@@ -106,7 +112,9 @@ public class PortalService {
     public PortalService(QuoteRepository quotes, QuoteRevisionRepository revisions,
                          QuoteLineRepository quoteLines, NegotiationRequestRepository negotiations,
                          CustomerRepository customers, OrderRepository orders,
-                         InvoiceRepository invoices, QuoteEvaluationService evaluationService,
+                         InvoiceRepository invoices, InvoiceLineRepository invoiceLines,
+                         InvoiceDocumentExporter documentExporter,
+                         QuoteEvaluationService evaluationService,
                          QuoteAccessPolicy accessPolicy, QuoteGateListener gateListener,
                          ApprovalRoutingService approvalRouting,
                          StockAvailabilityService availability, AuditService audit,
@@ -118,6 +126,8 @@ public class PortalService {
         this.customers = customers;
         this.orders = orders;
         this.invoices = invoices;
+        this.invoiceLines = invoiceLines;
+        this.documentExporter = documentExporter;
         this.evaluationService = evaluationService;
         this.accessPolicy = accessPolicy;
         this.gateListener = gateListener;
@@ -160,6 +170,46 @@ public class PortalService {
                         Money.toMajor(invoice.outstandingMinor()),
                         invoice.getIssueDate(), invoice.getDueDate()))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public InvoiceResponse getInvoice(UUID invoiceId, Actor actor) {
+        UUID customerId = requireCustomer(actor);
+        Invoice invoice = invoices.findById(invoiceId)
+                .orElseThrow(() -> ApiException.notFound("Invoice " + invoiceId));
+        if (!invoice.getCustomerId().equals(customerId) || invoice.getStatus() == Invoice.InvoiceStatus.DRAFT) {
+            throw ApiException.notFound("Invoice " + invoiceId);
+        }
+        return toInvoiceResponse(invoice);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportInvoice(UUID invoiceId, String format, Actor actor) {
+        InvoiceResponse invoice = getInvoice(invoiceId, actor);
+        String fmt = format == null ? "pdf" : format.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (fmt) {
+            case "pdf" -> documentExporter.exportPdf(invoice);
+            case "xlsx", "excel" -> documentExporter.exportExcel(invoice);
+            case "doc", "docx", "word" -> documentExporter.exportDoc(invoice);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "format must be pdf, xlsx or doc.");
+        };
+    }
+
+    private InvoiceResponse toInvoiceResponse(Invoice invoice) {
+        Customer customer = customers.findById(invoice.getCustomerId()).orElse(null);
+        List<InvoiceLineResponse> lines = invoiceLines.findByInvoiceIdOrderByPositionAsc(invoice.getId()).stream()
+                .map(line -> new InvoiceLineResponse(line.getId(), line.getDescription(), line.getQuantity(),
+                        Money.toMajor(line.getUnitPriceMinor()), Money.toMajor(line.getNetMinor()),
+                        Money.toMajor(line.getTaxMinor()), line.getCoverageStart(), line.getCoverageEnd(),
+                        line.getLineType().name()))
+                .toList();
+        return new InvoiceResponse(invoice.getId(), invoice.getReference(), invoice.getCustomerId(),
+                customer == null ? null : customer.getName(), invoice.getOrderId(), invoice.getSubscriptionId(),
+                invoice.getInvoiceKind().name(), invoice.getStatus().name(), invoice.getCurrency(),
+                invoice.getIssueDate(), invoice.getDueDate(), Money.toMajor(invoice.getNetMinor()),
+                Money.toMajor(invoice.getTaxMinor()), Money.toMajor(invoice.getTotalMinor()),
+                Money.toMajor(invoice.getCreditedMinor()), Money.toMajor(invoice.getPaidMinor()),
+                Money.toMajor(invoice.outstandingMinor()), lines);
     }
 
     // ---------------------------------------------------------- negotiation

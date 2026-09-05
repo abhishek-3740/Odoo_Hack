@@ -8,11 +8,11 @@ export function StatusBadge({ status, className = '' }) {
 
   if (['APPROVED', 'CONFIRMED', 'PAID', 'IN_STOCK', 'ACTIVE', 'ACCEPTED'].includes(s)) {
     colorClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
-  } else if (['SUBMITTED', 'PENDING', 'IN_REVIEW', 'AWAITING_CUSTOMER', 'INTERNAL_REVIEW'].includes(s)) {
+  } else if (['SUBMITTED', 'PENDING', 'IN_REVIEW', 'AWAITING_CUSTOMER', 'REVIEW', 'UNDER_NEGOTIATION'].includes(s)) {
     colorClasses = 'bg-amber-50 text-amber-800 border-amber-200/80';
-  } else if (['REJECTED', 'CANCELLED', 'BACKORDER', 'SHORTFALL', 'UNPAID', 'OVERDUE'].includes(s)) {
+  } else if (['REJECTED', 'CANCELED', 'CANCELLED', 'LOST', 'EXPIRED', 'BACKORDER', 'SHORTFALL', 'UNPAID', 'OVERDUE'].includes(s)) {
     colorClasses = 'bg-rose-50 text-rose-700 border-rose-200/80';
-  } else if (['SHARED_WITH_CUSTOMER', 'PARTIALLY_PAID', 'DISPATCHED', 'SHIPPED'].includes(s)) {
+  } else if (['SENT', 'PARTIALLY_PAID', 'DISPATCHED', 'SHIPPED'].includes(s)) {
     colorClasses = 'bg-indigo-50 text-indigo-700 border-indigo-200/80';
   } else if (['DRAFT'].includes(s)) {
     colorClasses = 'bg-slate-100 text-slate-700 border-slate-300';

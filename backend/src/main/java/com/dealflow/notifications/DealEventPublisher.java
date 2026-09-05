@@ -5,7 +5,10 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Pushes a minimal invalidation to one user's private queue.
@@ -29,6 +32,8 @@ public class DealEventPublisher {
                             long version, Instant occurredAt, Map<String, Object> payload) {
     }
 
+    private static final Logger log = LoggerFactory.getLogger(DealEventPublisher.class);
+
     private final SimpMessagingTemplate messaging;
     private final ObjectMapper objectMapper;
 
@@ -42,7 +47,17 @@ public class DealEventPublisher {
      *                  authenticated STOMP session, so only that session receives it
      */
     public void sendToProfile(UUID profileId, DealEvent event) {
-        String body = objectMapper.writeValueAsString(event);
+        String body;
+        try {
+            body = objectMapper.writeValueAsString(event);
+        } catch (JacksonException ex) {
+            // A serialisation failure is a programming error, not a transient one.
+            // Log it and skip this push; the outbox row has already committed so
+            // the data is safe — this is only a missed live notification.
+            log.error("Failed to serialise DealEvent {} ({}); WebSocket push skipped",
+                    event.eventId(), event.type(), ex);
+            return;
+        }
         messaging.convertAndSendToUser(profileId.toString(), "/queue/deal-events", body);
     }
 }

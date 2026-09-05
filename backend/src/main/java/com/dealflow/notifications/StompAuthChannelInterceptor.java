@@ -10,7 +10,7 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -63,8 +63,11 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-        if (accessor == null || accessor.getCommand() == null) {
+        // wrap() returns a mutable copy of the accessor so that setUser() is
+        // actually stored in the message headers. getAccessor() returns the
+        // live read-only view and silently discards any mutation.
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        if (accessor.getCommand() == null) {
             return message;
         }
         switch (accessor.getCommand()) {
@@ -72,9 +75,12 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             case SUBSCRIBE -> authoriseSubscription(accessor);
             case SEND -> throw new IllegalArgumentException(
                     "Clients do not send business messages over the socket; use the REST API.");
-            default -> { }
         }
-        return message;
+        // Rebuild the message from the (now-mutated) accessor so that any
+        // header changes — in particular the Principal set by authenticate() —
+        // are present in the message that flows to the broker and to
+        // SecurityContextChannelInterceptor.
+        return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
     }
 
     private void authenticate(StompHeaderAccessor accessor) {

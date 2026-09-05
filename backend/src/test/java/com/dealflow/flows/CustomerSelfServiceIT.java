@@ -152,9 +152,10 @@ class CustomerSelfServiceIT extends AbstractIntegrationTest {
         assertThat(after.path("activity").get(0).path("responseMessage").asText()).contains("pricing this now");
 
         // ---- account and settings --------------------------------------------
-        // HttpURLConnection cannot send PATCH; use the JDK HttpClient for this call.
+        // Use the blocking Apache transport for PATCH, including Windows hosts
+        // where the JDK selector's loopback connection is unavailable.
         var patchClient = org.springframework.web.client.RestClient.builder()
-                .requestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory())
+                .requestFactory(new org.springframework.http.client.HttpComponentsClientHttpRequestFactory())
                 .baseUrl("http://localhost:" + port)
                 .defaultStatusHandler(status -> true, (request, response) -> { })
                 .build();

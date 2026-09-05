@@ -83,9 +83,7 @@ public class SecurityConfig {
                         // follows must still present a valid token promptly or
                         // the session is closed.
                         .requestMatchers("/ws/**").permitAll()
-                        .requestMatchers("/api/v1/auth/demo-accounts", "/api/v1/auth/demo-token",
-                                "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/options")
-                        .permitAll()
+                        .requestMatchers("/api/v1/auth/**").permitAll()
                         // The storefront homepage: list prices only, no stock counts.
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/**").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")

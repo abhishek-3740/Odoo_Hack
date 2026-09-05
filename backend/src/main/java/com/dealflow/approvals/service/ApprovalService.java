@@ -203,7 +203,7 @@ public class ApprovalService {
 
     private void authoriseDecision(Actor actor, Quote quote, QuoteRevision revision,
                                    ApprovalRequest step) {
-        if (actor.role() != step.getRequiredRole()) {
+        if (actor.role() != step.getRequiredRole() && !actor.isAdmin()) {
             throw new ApiException(ErrorCode.APPROVER_NOT_QUALIFIED,
                     "This step must be decided by "
                             + step.getRequiredRole().name().toLowerCase() + ".");
@@ -225,14 +225,21 @@ public class ApprovalService {
         }
 
         // A step assigned to someone specific is theirs — unless the actor holds
-        // an in-date, role-qualified delegation for it.
+        // an in-date, role-qualified delegation for it, OR the actor is an admin,
+        // OR the actor is a qualified manager for the quotation's team.
         UUID assignee = step.getAssigneeProfileId();
-        if (assignee != null && !assignee.equals(actor.profileId()) && !hasDelegation(actor, step, now)) {
-            throw ApiException.forbidden("This step is assigned to another approver.");
+        if (assignee != null && !assignee.equals(actor.profileId())
+                && !hasDelegation(actor, step, now)
+                && !actor.isAdmin()) {
+            boolean sameTeamManager = actor.role() == step.getRequiredRole()
+                    && (step.getTeamId() == null || actor.teamId() == null || actor.teamId().equals(step.getTeamId()));
+            if (!sameTeamManager) {
+                throw ApiException.forbidden("This step is assigned to another approver.");
+            }
         }
 
-        // A manager decides for their own team.
-        if (step.getRequiredRole() == Role.MANAGER && step.getTeamId() != null
+        // A manager decides for their own team (admins can decide across any team).
+        if (!actor.isAdmin() && step.getRequiredRole() == Role.MANAGER && step.getTeamId() != null
                 && actor.teamId() != null && !actor.teamId().equals(step.getTeamId())) {
             throw ApiException.forbidden("This step belongs to another team.");
         }

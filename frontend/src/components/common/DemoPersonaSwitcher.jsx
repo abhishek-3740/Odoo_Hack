@@ -68,10 +68,10 @@ export function DemoPersonaSwitcher() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="demo-persona-switcher fixed bottom-4 right-4 z-50">
       {/* Popover Panel */}
       {isOpen && (
-        <div className="mb-2 w-96 max-h-[520px] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="mb-2 w-96 max-w-[calc(100vw-2rem)] max-h-[70dvh] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-150">
           <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
             <div className="flex items-center space-x-2">
               <Users className="w-4 h-4 text-indigo-400" />

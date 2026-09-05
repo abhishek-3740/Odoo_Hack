@@ -23,6 +23,8 @@ public enum ErrorCode {
     PROFILE_INACTIVE(HttpStatus.FORBIDDEN, "This account is deactivated."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "You do not have access to this action."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "That record does not exist."),
+    ASSISTANT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Assistant is temporarily unavailable."),
+    ASSISTANT_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many assistant requests."),
 
     // --- concurrency and replay ---
     STALE_QUOTE_VERSION(HttpStatus.CONFLICT, "This quotation changed. Refresh before continuing."),

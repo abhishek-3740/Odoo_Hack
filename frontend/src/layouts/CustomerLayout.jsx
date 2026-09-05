@@ -310,7 +310,7 @@ function CustomerShell() {
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between">
           <span>&copy; 2026 DealFlow360 Inc. All commercial terms securely bound.</span>
-          <span className="mt-2 sm:mt-0 text-slate-400">Strictly enforced customer privacy layer (zero internal cost leakage)</span>
+          <span className="mt-2 sm:mt-0 text-slate-500">Your quotes, conversations and next steps. All in one place.</span>
         </div>
       </footer>
     </div>

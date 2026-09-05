@@ -51,6 +51,6 @@ public enum Role {
      * approval (edge case E07).
      */
     public boolean canDecide(Role requiredRole) {
-        return this == requiredRole;
+        return this == requiredRole || this == ADMIN;
     }
 }

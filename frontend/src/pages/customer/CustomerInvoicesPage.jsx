@@ -2,13 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { api, formatINR, formatDate } from '../../services/api';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../components/common/LoadingState';
+import { InvoicePreviewModal } from '../../components/common/InvoicePreviewModal';
 import { useDealEvents } from '../../hooks/useDealEvents';
-import { Receipt, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Receipt, RefreshCw, CheckCircle2, Eye, Download, FileText, FileSpreadsheet } from 'lucide-react';
 
 export function CustomerInvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const loadInvoices = async () => {
     try {
@@ -33,6 +37,25 @@ export function CustomerInvoicesPage() {
     () => loadInvoices()
   );
 
+  const handleOpenPreview = (invId) => {
+    setPreviewInvoiceId(invId);
+    setPreviewOpen(true);
+  };
+
+  const handleQuickDownload = async (inv, format = 'pdf') => {
+    try {
+      setDownloadingId(`${inv.id}-${format}`);
+      const ext = format === 'xlsx' ? 'xlsx' : format === 'doc' ? 'doc' : 'pdf';
+      const ref = inv.reference || inv.id.slice(0, 8);
+      await api.download(`/portal/invoices/${inv.id}/export?format=${format}`, `invoice-${ref}.${ext}`);
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download invoice document: ' + err.message);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-24">
@@ -52,7 +75,7 @@ export function CustomerInvoicesPage() {
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Invoices & Billing Records</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Review commercial settlement statements, payment receipts, and outstanding dues.
+            Review commercial settlement statements, preview official tax documents, and download in PDF, Excel, or Word.
           </p>
         </div>
         <button
@@ -108,7 +131,8 @@ export function CustomerInvoicesPage() {
                   <th className="px-6 py-3.5">Issue Date</th>
                   <th className="px-6 py-3.5">Due Date</th>
                   <th className="px-6 py-3.5">Total Amount</th>
-                  <th className="px-6 py-3.5 text-right">Outstanding</th>
+                  <th className="px-6 py-3.5">Outstanding</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -126,7 +150,7 @@ export function CustomerInvoicesPage() {
                     <td className="px-6 py-4 font-semibold text-slate-900 tabular-nums">
                       {formatINR(inv.total)}
                     </td>
-                    <td className="px-6 py-4 text-right font-semibold tabular-nums">
+                    <td className="px-6 py-4 font-semibold tabular-nums">
                       {parseFloat(inv.outstanding) > 0 ? (
                         <span className="text-rose-600">{formatINR(inv.outstanding)}</span>
                       ) : (
@@ -135,6 +159,36 @@ export function CustomerInvoicesPage() {
                         </span>
                       )}
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="inline-flex items-center space-x-1.5">
+                        <button
+                          onClick={() => handleOpenPreview(inv.id)}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-xs transition-colors"
+                          title="Preview Full Invoice"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Preview</span>
+                        </button>
+                        <button
+                          onClick={() => handleQuickDownload(inv, 'pdf')}
+                          disabled={downloadingId === `${inv.id}-pdf`}
+                          className="inline-flex items-center space-x-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-xs transition-colors"
+                          title="Quick PDF Download"
+                        >
+                          <Download className={`w-3.5 h-3.5 ${downloadingId === `${inv.id}-pdf` ? 'animate-bounce' : ''}`} />
+                          <span>PDF</span>
+                        </button>
+                        <button
+                          onClick={() => handleQuickDownload(inv, 'xlsx')}
+                          disabled={downloadingId === `${inv.id}-xlsx`}
+                          className="inline-flex items-center space-x-1 px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium rounded-lg text-xs transition-colors"
+                          title="Quick Excel Download"
+                        >
+                          <FileSpreadsheet className={`w-3.5 h-3.5 ${downloadingId === `${inv.id}-xlsx` ? 'animate-bounce' : ''}`} />
+                          <span>Excel</span>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -142,6 +196,15 @@ export function CustomerInvoicesPage() {
           </div>
         </div>
       )}
+
+      {/* Invoice Preview & Download Modal */}
+      <InvoicePreviewModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        invoiceId={previewInvoiceId}
+        initialInvoice={invoices.find((i) => i.id === previewInvoiceId)}
+        portalMode={true}
+      />
     </div>
   );
 }

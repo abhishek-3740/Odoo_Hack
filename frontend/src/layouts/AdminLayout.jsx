@@ -32,14 +32,14 @@ export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Fetch unread notifications
+  // The header shortcut reflects the commercial review inbox it opens.
   useEffect(() => {
     async function loadNotifications() {
       if (!user) return;
       try {
-        const notifications = await api.get('/notifications');
+        const notifications = await api.get('/escalations');
         if (Array.isArray(notifications)) {
-          const unread = notifications.filter((n) => !n.readAt && !n.isRead).length;
+          const unread = notifications.filter((n) => n.status === 'OPEN').length;
           setUnreadCount(unread);
         }
       } catch (err) {
@@ -61,6 +61,7 @@ export function AdminLayout() {
       title: 'General',
       items: [
         { label: 'Executive Overview', path: '/admin', icon: LayoutDashboard, exact: true },
+        { label: 'Review Inbox', path: '/admin/reviews', icon: CheckSquare },
       ],
     },
     ...(canSales
@@ -112,7 +113,8 @@ export function AdminLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans">
+    <div className="workspace-shell min-h-screen bg-canvas flex font-sans">
+      <a className="skip-link" href="#workspace-main">Skip to workspace</a>
       <ToastContainer />
       <DemoPersonaSwitcher />
 
@@ -145,6 +147,7 @@ export function AdminLayout() {
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
+            aria-label="Close navigation"
             className="md:hidden text-slate-400 hover:text-white"
           >
             <X className="w-5 h-5" />
@@ -187,6 +190,7 @@ export function AdminLayout() {
                 return (
                   <Link
                     key={item.path}
+                    aria-current={isActive ? 'page' : undefined}
                     to={item.path}
                     onClick={() => setSidebarOpen(false)}
                     className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
@@ -207,7 +211,7 @@ export function AdminLayout() {
         {/* Bottom utility links */}
         <div className="p-3 border-t border-slate-800 bg-slate-950/40 space-y-1">
           <Link
-            to="/customer"
+            to="/"
             className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <span className="flex items-center space-x-2">
@@ -226,11 +230,12 @@ export function AdminLayout() {
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open navigation"
               className="md:hidden text-slate-500 hover:text-slate-800 p-1 rounded-md"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-sm font-semibold text-slate-800 hidden sm:block">
+            <p className="text-sm font-semibold text-slate-800 hidden sm:block">
               {location.pathname.startsWith('/admin/sales')
                 ? 'Sales Workspace'
                 : location.pathname.startsWith('/admin/manager')
@@ -239,16 +244,18 @@ export function AdminLayout() {
                 ? 'Finance & Fulfillment Workspace'
                 : location.pathname.startsWith('/admin/system')
                 ? 'System Administration'
-                : 'Executive Switchboard'}
-            </h1>
+                : location.pathname.startsWith('/admin/reviews') ? 'Commercial Review' : 'DealFlow Workspace'}
+            </p>
           </div>
 
           <div className="flex items-center space-x-4">
             {/* Notifications trigger */}
             <div className="relative">
               <button
+                onClick={() => navigate('/admin/reviews')}
+                aria-label="Open review inbox"
                 className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors relative"
-                title="Notifications"
+                title="Open commercial reviews"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -268,7 +275,7 @@ export function AdminLayout() {
         </header>
 
         {/* Routed Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main id="workspace-main" className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <Outlet />
         </main>
       </div>

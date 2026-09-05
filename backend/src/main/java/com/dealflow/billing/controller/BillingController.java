@@ -41,6 +41,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -71,6 +74,7 @@ public class BillingController {
     private final OrderRepository orders;
     private final SubscriptionService subscriptionService;
     private final SettlementService settlementService;
+    private final InvoiceDocumentExporter documentExporter;
     private final IdempotencyService idempotency;
 
     public BillingController(InvoiceRepository invoices, InvoiceLineRepository invoiceLines,
@@ -79,6 +83,7 @@ public class BillingController {
                              CreditNoteRepository creditNotes, RefundRepository refunds,
                              CustomerRepository customers, OrderRepository orders,
                              SubscriptionService subscriptionService, SettlementService settlementService,
+                             InvoiceDocumentExporter documentExporter,
                              IdempotencyService idempotency) {
         this.invoices = invoices;
         this.invoiceLines = invoiceLines;
@@ -92,6 +97,7 @@ public class BillingController {
         this.orders = orders;
         this.subscriptionService = subscriptionService;
         this.settlementService = settlementService;
+        this.documentExporter = documentExporter;
         this.idempotency = idempotency;
     }
 
@@ -128,6 +134,49 @@ public class BillingController {
             throw ApiException.notFound("Invoice " + invoiceId);
         }
         return ApiResponse.of(toInvoice(invoice));
+    }
+
+    @GetMapping("/invoices/{invoiceId}/export")
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> exportInvoice(@PathVariable UUID invoiceId,
+                                                @RequestParam(defaultValue = "pdf") String format,
+                                                Actor actor) {
+        requireInternal(actor);
+        Invoice invoice = invoices.findById(invoiceId).orElseThrow(() -> ApiException.notFound("Invoice " + invoiceId));
+        if (!visibleTo(invoice, actor)) {
+            throw ApiException.notFound("Invoice " + invoiceId);
+        }
+        InvoiceResponse response = toInvoice(invoice);
+
+        byte[] body;
+        String mediaType;
+        String extension;
+        switch (format.toLowerCase(java.util.Locale.ROOT)) {
+            case "pdf" -> {
+                body = documentExporter.exportPdf(response);
+                mediaType = MediaType.APPLICATION_PDF_VALUE;
+                extension = "pdf";
+            }
+            case "xlsx", "excel" -> {
+                body = documentExporter.exportExcel(response);
+                mediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                extension = "xlsx";
+            }
+            case "doc", "docx", "word" -> {
+                body = documentExporter.exportDoc(response);
+                mediaType = "application/msword";
+                extension = "doc";
+            }
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "format must be pdf, xlsx or doc.");
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"invoice-" + invoice.getReference() + "." + extension + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .contentType(MediaType.parseMediaType(mediaType))
+                .body(body);
     }
 
     // -------------------------------------------------------- subscriptions
