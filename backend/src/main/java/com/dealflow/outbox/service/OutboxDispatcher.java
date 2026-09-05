@@ -129,6 +129,8 @@ public class OutboxDispatcher {
     private void deliver(OutboxEvent event, Instant now) {
         Set<UUID> recipients = resolveRecipients(event.getRecipientScope());
         if (recipients.isEmpty()) {
+            log.debug("Outbox event {} ({}): no active recipients resolved; push skipped",
+                    event.getId(), event.getEventType());
             return;
         }
         Map<String, Object> payload = parsePayload(event.getPayload());

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, formatINR, formatDate, formatDateTime } from '../../../services/api';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Box,
 } from 'lucide-react';
+import { useDealEvents } from '../../../hooks/useDealEvents';
 
 export function FulfillmentPage() {
   const [activeTab, setActiveTab] = useState('stock'); // 'stock' | 'orders'
@@ -43,7 +44,7 @@ export function FulfillmentPage() {
   // Dispatch Runner State
   const [dispatchingId, setDispatchingId] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setRefreshing(true);
       const [stocksRes, ordersRes, whRes, varRes] = await Promise.all([
@@ -71,11 +72,18 @@ export function FulfillmentPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  // Auto-refresh when fulfillment-related events arrive over WebSocket.
+  const FULFILLMENT_EVENTS = new Set(['ALLOCATION_UPDATED', 'BACKORDER_UPDATED', 'ORDER_CREATED', 'STOCK_UPDATED']);
+  useDealEvents(
+    (e) => FULFILLMENT_EVENTS.has(e.type),
+    loadData
+  );
 
   const handleInspectAllocation = async (orderId) => {
     setSelectedOrderId(orderId);

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageSquare, ArrowUpRight } from 'lucide-react';
 import { api, formatDateTime } from '../../services/api';
-import { subscribeToDealEvents } from '../../services/websocket';
+import { useDealEvents } from '../../hooks/useDealEvents';
 
 export function NegotiationDesk({ quoteId, refreshKey, canReply = true }) {
   const [requests, setRequests] = useState([]);
@@ -11,9 +11,13 @@ export function NegotiationDesk({ quoteId, refreshKey, canReply = true }) {
   const [reload, setReload] = useState(0);
   const [messages, setMessages] = useState({});
   const [busy, setBusy] = useState('');
-  useEffect(() => subscribeToDealEvents(event => {
-    if (event.entityId === quoteId || event.quoteId === quoteId) setReload(n => n + 1);
-  }), [quoteId]);
+  // Reload when a relevant deal event arrives for this quote.
+  // useDealEvents keeps the handler in a ref so changing quoteId
+  // or reload does not create a new subscription on every render.
+  useDealEvents(
+    (e) => e.entityId === quoteId,
+    () => setReload((n) => n + 1)
+  );
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError('');

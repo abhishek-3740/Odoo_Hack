@@ -63,10 +63,12 @@ export function LoginPage() {
     demoAccounts.length > 0
       ? demoAccounts
       : [
+          { email: 'admin@dealflow.demo', role: 'ADMIN', fullName: 'System Admin' },
+          { email: 'manager.a@dealflow.demo', role: 'MANAGER', fullName: 'Sales Manager A' },
+          { email: 'rep.a@dealflow.demo', role: 'REP', fullName: 'Sales Rep A' },
+          { email: 'finance.a@dealflow.demo', role: 'FINANCE', fullName: 'Finance Officer' },
           { email: 'alpha@customer.demo', role: 'CUSTOMER', fullName: 'Customer Alpha' },
           { email: 'beta@customer.demo', role: 'CUSTOMER', fullName: 'Customer Beta' },
-          { email: 'rep.a@dealflow.demo', role: 'REP', fullName: 'Sales Rep A' },
-          { email: 'admin@dealflow.demo', role: 'ADMIN', fullName: 'System Admin' },
         ];
 
   return (
@@ -74,17 +76,24 @@ export function LoginPage() {
       title="Welcome back"
       subtitle="Sign in to your customer portal or internal workspace."
       footer={
-        options.selfRegistration ? (
-          <>
-            New to DealFlow360?{' '}
+        <div className="space-y-1.5">
+          <div>
+            Need an account?{' '}
             <Link
               to={next ? `/signup?next=${encodeURIComponent(next)}` : '/signup'}
               className="font-semibold text-indigo-600 hover:text-indigo-800"
             >
-              Create a customer account
+              Customer Signup
             </Link>
-          </>
-        ) : null
+            <span className="mx-1.5 text-slate-300">&bull;</span>
+            <Link
+              to={next ? `/signup/staff?next=${encodeURIComponent(next)}` : '/signup/staff'}
+              className="font-semibold text-indigo-600 hover:text-indigo-800"
+            >
+              Enterprise Staff Signup
+            </Link>
+          </div>
+        </div>
       }
     >
       <form className="space-y-4" onSubmit={handleSubmit} noValidate>

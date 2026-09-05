@@ -2,6 +2,7 @@ package com.dealflow.auth.service;
 
 import com.dealflow.auth.controller.DemoAuthController.AuthTokenResponse;
 import com.dealflow.auth.controller.MeController;
+import com.dealflow.auth.dto.AuthDtos.InternalRegisterRequest;
 import com.dealflow.auth.dto.AuthDtos.RegisterRequest;
 import com.dealflow.auth.models.Actor;
 import com.dealflow.auth.models.Profile;
@@ -10,6 +11,8 @@ import com.dealflow.auth.repo.ProfileRepository;
 import com.dealflow.catalog.models.CatalogEnums.CustomerTier;
 import com.dealflow.catalog.models.Customer;
 import com.dealflow.catalog.repo.CustomerRepository;
+import com.dealflow.catalog.models.Team;
+import com.dealflow.catalog.repo.TeamRepository;
 import com.dealflow.config.AppProperties;
 import com.dealflow.shared.audit.AuditService;
 import com.dealflow.shared.error.ApiException;
@@ -64,14 +67,16 @@ public class LocalAuthService {
     private final AppProperties properties;
     private final ProfileRepository profiles;
     private final CustomerRepository customers;
+    private final TeamRepository teams;
     private final AuditService audit;
     private final PasswordEncoder encoder = new BCryptPasswordEncoder();
 
     public LocalAuthService(AppProperties properties, ProfileRepository profiles,
-                            CustomerRepository customers, AuditService audit) {
+                            CustomerRepository customers, TeamRepository teams, AuditService audit) {
         this.properties = properties;
         this.profiles = profiles;
         this.customers = customers;
+        this.teams = teams;
         this.audit = audit;
     }
 
@@ -85,7 +90,11 @@ public class LocalAuthService {
             return local;
         }
         String demo = properties.demo() == null ? null : properties.demo().jwtSecret();
-        return usable(demo) ? demo : null;
+        if (usable(demo)) {
+            return demo;
+        }
+        String auth = properties.auth() == null ? null : properties.auth().jwtSecret();
+        return usable(auth) ? auth : null;
     }
 
     public boolean enabled() {
@@ -127,6 +136,69 @@ public class LocalAuthService {
                 .save();
         log.info("Customer account registered for {} ({})", email, customer.getName());
         return tokenResponse(profile);
+    }
+
+    /**
+     * Internal staff registration for Admin, Sales Rep, Manager, and Finance roles.
+     */
+    @Transactional
+    public AuthTokenResponse registerInternal(InternalRegisterRequest request) {
+        requireEnabled();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        if (profiles.findByEmailIgnoreCase(email).isPresent()) {
+            throw new ApiException(ErrorCode.CONFLICTING_STATE,
+                    "An account already exists for " + email + ". Sign in instead.");
+        }
+
+        Role role = request.role();
+        if (role == null || !role.isInternal()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "Staff registration requires an internal role (ADMIN, REP, MANAGER, or FINANCE).");
+        }
+
+        UUID teamId = request.teamId();
+        if (teamId == null && request.teamName() != null && !request.teamName().isBlank()) {
+            String name = request.teamName().trim();
+            Team team = teams.findByName(name).orElseGet(() -> teams.save(new Team(name)));
+            teamId = team.getId();
+        }
+        if (teamId == null && (role == Role.REP || role == Role.MANAGER)) {
+            // Default to "Sales East" or the first existing team
+            teamId = teams.findByName("Sales East")
+                    .map(Team::getId)
+                    .orElseGet(() -> teams.findAll().stream().findFirst().map(Team::getId).orElse(null));
+            if (teamId == null) {
+                Team created = teams.save(new Team("Sales East"));
+                teamId = created.getId();
+            }
+        }
+
+        Profile profile = new Profile(UUID.randomUUID(), email, request.fullName().trim(), role);
+        profile.setTeamId(role == Role.ADMIN || role == Role.FINANCE ? null : teamId);
+        profile.setPhone(blankToNull(request.phone()));
+        profile.setPasswordHash(encoder.encode(request.password()));
+        profile.setActive(true);
+        profiles.save(profile);
+
+        audit.record(profile.toActor(), "STAFF_REGISTERED", "Profile", profile.getId())
+                .after(Map.of("email", email, "role", role.name(),
+                        "teamId", teamId != null ? teamId.toString() : "none"))
+                .save();
+        log.info("Staff account registered for {} as {}", email, role);
+        return tokenResponse(profile);
+    }
+
+    /** Lists teams for registration selection. */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listTeams() {
+        List<Team> all = teams.findAll();
+        if (all.isEmpty()) {
+            Team def = teams.save(new Team("Sales East"));
+            all = List.of(def);
+        }
+        return all.stream()
+                .map(t -> Map.<String, Object>of("id", t.getId(), "name", t.getName()))
+                .toList();
     }
 
     @Transactional(readOnly = true)

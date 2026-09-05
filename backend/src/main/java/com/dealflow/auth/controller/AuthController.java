@@ -2,6 +2,7 @@ package com.dealflow.auth.controller;
 
 import com.dealflow.auth.controller.DemoAuthController.AuthTokenResponse;
 import com.dealflow.auth.controller.DemoAuthController.DemoTokenRequest;
+import com.dealflow.auth.dto.AuthDtos.InternalRegisterRequest;
 import com.dealflow.auth.dto.AuthDtos.LoginRequest;
 import com.dealflow.auth.dto.AuthDtos.RegisterRequest;
 import com.dealflow.auth.models.Profile;
@@ -13,6 +14,7 @@ import com.dealflow.shared.error.ApiException;
 import com.dealflow.shared.error.ErrorCode;
 import com.dealflow.shared.web.ApiResponse;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -62,6 +64,17 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<AuthTokenResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.of(localAuth.register(request));
+    }
+
+    @PostMapping("/register-internal")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<AuthTokenResponse> registerInternal(@Valid @RequestBody InternalRegisterRequest request) {
+        return ApiResponse.of(localAuth.registerInternal(request));
+    }
+
+    @GetMapping("/teams")
+    public ApiResponse<List<Map<String, Object>>> teams() {
+        return ApiResponse.of(localAuth.listTeams());
     }
 
     @PostMapping("/login")

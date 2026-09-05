@@ -64,6 +64,7 @@ import tools.jackson.databind.ObjectMapper;
         "dealflow.demo.seed-on-startup=false",
         "dealflow.demo.mode=false",
         "dealflow.auth.jwt-secret=" + TestTokens.SECRET,
+        "dealflow.auth.local-jwt-secret=" + TestTokens.SECRET,
         "dealflow.auth.jwk-set-uri=",
         "dealflow.auth.issuer-uri=" + TestTokens.ISSUER,
         "dealflow.auth.auto-provision-rep=true",

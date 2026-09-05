@@ -121,6 +121,20 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Internal staff registration: Admin, Manager, Rep, Finance
+  const registerInternal = async (payload) => {
+    try {
+      setLoading(true);
+      const res = await api.post('/auth/register-internal', payload);
+      const profile = await adoptToken(res.accessToken);
+      return { success: true, profile, role: res.role, targetPath: landingPathFor(profile || res) };
+    } catch (err) {
+      return { success: false, error: err.message, code: err.code, status: err.status };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 1-Click Demo Persona Switcher
   const switchPersona = async (account) => {
     try {
@@ -168,6 +182,7 @@ export function AuthProvider({ children }) {
         demoAccounts,
         login,
         register,
+        registerInternal,
         switchPersona,
         logout,
         updateUserLocal,

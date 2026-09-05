@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, formatINR, formatDate } from '../../../services/api';
 import { StatusBadge } from '../../../components/common/StatusBadge';
@@ -17,6 +17,7 @@ import {
   Building2,
   RefreshCw,
 } from 'lucide-react';
+import { useDealEvents } from '../../../hooks/useDealEvents';
 
 export function SalesQuotesPage() {
   const [quotes, setQuotes] = useState([]);
@@ -36,7 +37,7 @@ export function SalesQuotesPage() {
 
   const navigate = useNavigate();
 
-  const loadQuotes = async () => {
+  const loadQuotes = useCallback(async () => {
     try {
       setRefreshing(true);
       const [quoteData, customerData] = await Promise.all([
@@ -57,11 +58,18 @@ export function SalesQuotesPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadQuotes();
-  }, []);
+  }, [loadQuotes]);
+
+  // Auto-refresh the quotes list when relevant deal events arrive over WebSocket.
+  const SALES_EVENTS = new Set(['QUOTE_REVISED', 'QUOTE_SUBMITTED', 'APPROVAL_UPDATED', 'ORDER_CREATED']);
+  useDealEvents(
+    (e) => SALES_EVENTS.has(e.type),
+    loadQuotes
+  );
 
   const handleCreateQuote = async (e) => {
     e.preventDefault();
