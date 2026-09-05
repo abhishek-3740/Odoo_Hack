@@ -1,5 +1,10 @@
 package com.dealflow.portal.dto;
 
+
+import com.dealflow.portal.models.*;
+import com.dealflow.portal.repo.*;
+import com.dealflow.portal.service.*;
+import com.dealflow.portal.controller.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;

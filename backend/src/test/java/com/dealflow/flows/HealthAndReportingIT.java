@@ -2,16 +2,16 @@ package com.dealflow.flows;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.dealflow.auth.Profile;
-import com.dealflow.auth.Role;
-import com.dealflow.catalog.CatalogEnums.CustomerTier;
-import com.dealflow.catalog.Customer;
-import com.dealflow.catalog.ProductVariant;
-import com.dealflow.fulfillment.StockLevel;
-import com.dealflow.fulfillment.Warehouse;
-import com.dealflow.outbox.OutboxDispatcher;
-import com.dealflow.outbox.OutboxEvent;
-import com.dealflow.outbox.OutboxEventRepository;
+import com.dealflow.auth.models.Profile;
+import com.dealflow.auth.models.Role;
+import com.dealflow.catalog.models.CatalogEnums.CustomerTier;
+import com.dealflow.catalog.models.Customer;
+import com.dealflow.catalog.models.ProductVariant;
+import com.dealflow.fulfillment.models.StockLevel;
+import com.dealflow.fulfillment.models.Warehouse;
+import com.dealflow.outbox.service.OutboxDispatcher;
+import com.dealflow.outbox.models.OutboxEvent;
+import com.dealflow.outbox.repo.OutboxEventRepository;
 import com.dealflow.support.AbstractIntegrationTest;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;

@@ -3,12 +3,12 @@ package com.dealflow.flows;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.dealflow.auth.Profile;
-import com.dealflow.auth.Role;
-import com.dealflow.catalog.CatalogEnums.CustomerTier;
-import com.dealflow.catalog.Customer;
-import com.dealflow.catalog.ProductVariant;
-import com.dealflow.outbox.OutboxDispatcher;
+import com.dealflow.auth.models.Profile;
+import com.dealflow.auth.models.Role;
+import com.dealflow.catalog.models.CatalogEnums.CustomerTier;
+import com.dealflow.catalog.models.Customer;
+import com.dealflow.catalog.models.ProductVariant;
+import com.dealflow.outbox.service.OutboxDispatcher;
 import com.dealflow.support.AbstractIntegrationTest;
 import java.lang.reflect.Type;
 import java.util.List;

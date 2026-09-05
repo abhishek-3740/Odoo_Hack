@@ -165,6 +165,8 @@ dealflow:
     mode: ${DEMO_MODE:false}
     seed-on-startup: ${DEMO_SEED:false}
     business-date-override: ${DEMO_BUSINESS_DATE:}
+    auth-enabled: ${DEMO_AUTH_ENABLED:false}
+    jwt-secret: ${DEMO_JWT_SECRET:}
 
   limits:
     max-quote-lines: 100

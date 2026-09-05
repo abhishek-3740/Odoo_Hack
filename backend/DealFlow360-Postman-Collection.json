@@ -1,0 +1,414 @@
+{
+  "info": {
+    "_postman_id": "dealflow360-api-collection-v1",
+    "name": "DealFlow360 API - Verification Collection",
+    "description": "Comprehensive Postman verification collection for DealFlow360 backend APIs with pre-seeded demo accounts (Admin, Rep, Manager, Finance, Customer).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Authentication & Demo Accounts",
+      "item": [
+        {
+          "name": "1.1 List All Demo Accounts & Tokens",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/demo-accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "demo-accounts"]
+            },
+            "description": "Returns all 8 demo personas (Admin, Rep A, Rep B, Manager A, Backup Manager, Finance, Customer Alpha, Customer Beta) with ready-to-use Bearer tokens and curl examples."
+          }
+        },
+        {
+          "name": "1.2 Login as Demo Admin (Auto-Sets {{token}})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.data && res.data.accessToken) {",
+                  "    pm.collectionVariables.set('token', res.data.accessToken);",
+                  "    pm.environment.set('token', res.data.accessToken);",
+                  "    console.log('Successfully authenticated as ' + res.data.email + ' (' + res.data.role + ')');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@dealflow.demo\",\n  \"password\": \"demo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticates as Demo Admin. Post-response test script automatically sets the 'token' variable for all subsequent requests."
+          }
+        },
+        {
+          "name": "1.3 Login as Sales Rep A (Auto-Sets {{token}})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.data && res.data.accessToken) {",
+                  "    pm.collectionVariables.set('token', res.data.accessToken);",
+                  "    pm.environment.set('token', res.data.accessToken);",
+                  "    console.log('Successfully authenticated as ' + res.data.email + ' (' + res.data.role + ')');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rep.a@dealflow.demo\",\n  \"password\": \"demo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticates as Sales Rep A. Has permissions to create, edit, and submit quotations."
+          }
+        },
+        {
+          "name": "1.4 Login as Sales Manager A (Auto-Sets {{token}})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.data && res.data.accessToken) {",
+                  "    pm.collectionVariables.set('token', res.data.accessToken);",
+                  "    pm.environment.set('token', res.data.accessToken);",
+                  "    console.log('Successfully authenticated as ' + res.data.email + ' (' + res.data.role + ')');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"manager.a@dealflow.demo\",\n  \"password\": \"demo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticates as Sales Manager A. Can sign off on Step 1 discount approval requests."
+          }
+        },
+        {
+          "name": "1.5 Login as Finance Ops (Auto-Sets {{token}})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.data && res.data.accessToken) {",
+                  "    pm.collectionVariables.set('token', res.data.accessToken);",
+                  "    pm.environment.set('token', res.data.accessToken);",
+                  "    console.log('Successfully authenticated as ' + res.data.email + ' (' + res.data.role + ')');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"finance@dealflow.demo\",\n  \"password\": \"demo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticates as Finance Ops. Can sign off on Step 2 approvals, record cash receipts, and dispatch orders."
+          }
+        },
+        {
+          "name": "1.6 Login as Customer Beta (Auto-Sets {{token}})",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.data && res.data.accessToken) {",
+                  "    pm.collectionVariables.set('token', res.data.accessToken);",
+                  "    pm.environment.set('token', res.data.accessToken);",
+                  "    console.log('Successfully authenticated as ' + res.data.email + ' (' + res.data.role + ')');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"beta@customer.demo\",\n  \"password\": \"demo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticates as Beta Buyer (Customer Persona). Portal access strictly isolated to Beta Systems data."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Core & Identity",
+      "item": [
+        {
+          "name": "2.1 Who Am I (/api/v1/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "me"]
+            },
+            "description": "Returns verified profile identity, active role, team ID, customer ID, and calculated capability array."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Commercial Quotations",
+      "item": [
+        {
+          "name": "3.1 List Quotations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/quotes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "quotes"]
+            },
+            "description": "Lists quotations accessible by the current authenticated actor."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Discount Approvals",
+      "item": [
+        {
+          "name": "4.1 List Pending Approvals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/approvals",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "approvals"]
+            },
+            "description": "Returns pending approval requests filtered by the caller's role (Manager or Finance)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Fulfillment & Orders",
+      "item": [
+        {
+          "name": "5.1 List Fulfillment Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/fulfillment/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "fulfillment", "orders"]
+            },
+            "description": "Lists orders with warehouse fulfillment splits and dispatch tracking."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Billing & Invoices",
+      "item": [
+        {
+          "name": "6.1 List Invoices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/billing/invoices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "billing", "invoices"]
+            },
+            "description": "Lists one-time and recurring invoices with outstanding balance."
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Deal Health Monitor",
+      "item": [
+        {
+          "name": "7.1 List Deal Health Alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health/alerts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health", "alerts"]
+            },
+            "description": "Returns stalled deals (>72h), discount anomalies (>5pp / 2 sigma), and pending approval warnings."
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Customer Proposal Portal",
+      "item": [
+        {
+          "name": "8.1 List Customer Proposals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portal/proposals",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "portal", "proposals"]
+            },
+            "description": "Returns commercial proposals for the authenticated customer organization (strictly hiding internal costs and margins)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Admin Governance",
+      "item": [
+        {
+          "name": "9.1 List Workspace Profiles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/profiles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "profiles"]
+            },
+            "description": "Administrative endpoint to list and audit all workspace profiles (requires ROLE_ADMIN)."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 package com.dealflow.config;
 
-import com.dealflow.auth.ProfileAuthenticationException;
-import com.dealflow.auth.ProfileJwtAuthenticationConverter;
+import com.dealflow.auth.models.ProfileAuthenticationException;
+import com.dealflow.auth.service.DemoTokenService;
+import com.dealflow.auth.service.ProfileJwtAuthenticationConverter;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jwt.SignedJWT;
 import com.dealflow.shared.error.ErrorCode;
 import com.dealflow.shared.web.ErrorResponse;
 import tools.jackson.databind.ObjectMapper;
@@ -28,6 +31,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -78,6 +82,8 @@ public class SecurityConfig {
                         // follows must still present a valid token promptly or
                         // the session is closed.
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/api/v1/auth/demo-accounts", "/api/v1/auth/demo-token",
+                                "/api/v1/auth/login").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
@@ -100,11 +106,27 @@ public class SecurityConfig {
      * <p>Supabase signs either with a shared HS256 secret (the default for the
      * local Docker stack) or with asymmetric keys published as a JWKS (hosted
      * projects using signing keys). Both are supported; configure exactly one.
+     * When enabled, demo tokens are verified with a distinct opt-in secret, so
+     * they do not weaken or replace Supabase verification.
      * Asymmetric verification is preferred wherever it is available, because it
      * means this service never holds a key capable of minting tokens.
      */
     @Bean
     public JwtDecoder jwtDecoder() {
+        JwtDecoder supabaseDecoder = supabaseJwtDecoder();
+        JwtDecoder demoDecoder = demoJwtDecoder();
+        return token -> {
+            if (isDemoToken(token)) {
+                if (demoDecoder == null) {
+                    throw new JwtException("Demo authentication is disabled.");
+                }
+                return demoDecoder.decode(token);
+            }
+            return supabaseDecoder.decode(token);
+        };
+    }
+
+    private JwtDecoder supabaseJwtDecoder() {
         AppProperties.Auth auth = properties.auth();
         boolean hasJwks = auth.jwkSetUri() != null && !auth.jwkSetUri().isBlank();
         boolean hasSecret = auth.jwtSecret() != null && !auth.jwtSecret().isBlank();
@@ -134,6 +156,37 @@ public class SecurityConfig {
         return decoder;
     }
 
+    private JwtDecoder demoJwtDecoder() {
+        AppProperties.Demo demo = properties.demo();
+        if (demo == null || !demo.authEnabled()) {
+            return null;
+        }
+        String secret = demo.jwtSecret();
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("DEMO_JWT_SECRET must be at least 32 bytes when DEMO_AUTH_ENABLED=true.");
+        }
+        SecretKeySpec key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(Duration.ofSeconds(properties.auth().clockSkewSeconds())),
+                new JwtIssuerValidator(DemoTokenService.DEMO_ISSUER),
+                audienceValidator(DemoTokenService.DEMO_AUDIENCE),
+                new JwtClaimValidator<Boolean>("dealflow_demo", Boolean.TRUE::equals)));
+        return decoder;
+    }
+
+    /** Routing uses untrusted claims only to select a decoder; validation still happens inside that decoder. */
+    private boolean isDemoToken(String token) {
+        try {
+            SignedJWT parsed = SignedJWT.parse(token);
+            return JWSAlgorithm.HS256.equals(parsed.getHeader().getAlgorithm())
+                    && DemoTokenService.DEMO_ISSUER.equals(parsed.getJWTClaimsSet().getIssuer())
+                    && Boolean.TRUE.equals(parsed.getJWTClaimsSet().getBooleanClaim("dealflow_demo"));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private OAuth2TokenValidator<Jwt> tokenValidator(AppProperties.Auth auth) {
         List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
         validators.add(new JwtTimestampValidator(Duration.ofSeconds(auth.clockSkewSeconds())));
@@ -141,15 +194,18 @@ public class SecurityConfig {
             validators.add(new JwtIssuerValidator(auth.issuerUri()));
         }
         if (auth.requireAudience()) {
-            String expected = auth.expectedAudience();
-            validators.add(new JwtClaimValidator<Object>(JwtClaimNames.AUD, claim -> switch (claim) {
+            validators.add(audienceValidator(auth.expectedAudience()));
+        }
+        return new DelegatingOAuth2TokenValidator<>(validators);
+    }
+
+    private OAuth2TokenValidator<Jwt> audienceValidator(String expected) {
+        return new JwtClaimValidator<Object>(JwtClaimNames.AUD, claim -> switch (claim) {
                 case null -> false;
                 case String single -> single.equals(expected);
                 case List<?> many -> many.contains(expected);
                 default -> false;
-            }));
-        }
-        return new DelegatingOAuth2TokenValidator<>(validators);
+            });
     }
 
     @Bean
