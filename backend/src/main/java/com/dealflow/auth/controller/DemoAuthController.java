@@ -62,13 +62,4 @@ public class DemoAuthController {
     public ApiResponse<AuthTokenResponse> mintDemoToken(@RequestBody(required = false) DemoTokenRequest request) {
         return ApiResponse.of(demoTokenService.authenticateDemo(request));
     }
-
-    /**
-     * Standard credentials login endpoint for Postman collections.
-     * Accepts: { "email": "admin@dealflow.demo", "password": "demo" }
-     */
-    @PostMapping("/login")
-    public ApiResponse<AuthTokenResponse> login(@RequestBody(required = false) DemoTokenRequest request) {
-        return ApiResponse.of(demoTokenService.authenticateDemo(request));
-    }
 }

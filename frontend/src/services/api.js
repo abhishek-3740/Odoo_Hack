@@ -86,6 +86,7 @@ export const api = {
   postWithIdempotency: (url, body, options = {}) =>
     apiRequest(url, { ...options, method: 'POST', body, idempotent: true }),
   patch: (url, body, options = {}) => apiRequest(url, { ...options, method: 'PATCH', body }),
+  put: (url, body, options = {}) => apiRequest(url, { ...options, method: 'PUT', body }),
   patchWithIdempotency: (url, body, options = {}) =>
     apiRequest(url, { ...options, method: 'PATCH', body, idempotent: true }),
   delete: (url, options = {}) => apiRequest(url, { ...options, method: 'DELETE' }),
@@ -173,3 +174,12 @@ export function formatDateTime(dateString) {
     return dateString;
   }
 }
+
+// Public (no token required) helpers
+export function authOptions() {
+  return api.get('/auth/options');
+}
+
+export const catalog = {
+  getPublic: () => api.get('/public/catalog'),
+};

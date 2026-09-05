@@ -123,6 +123,7 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final BusinessClock clock;
     private final ObjectMapper objectMapper;
     private final AppProperties properties;
+    private final DemoCatalogExtras catalogExtras;
 
     public DemoDataSeeder(TeamRepository teams, ProfileRepository profiles,
                           ApprovalDelegationRepository delegations, CustomerRepository customers,
@@ -134,7 +135,8 @@ public class DemoDataSeeder implements ApplicationRunner {
                           QuoteRevisionRepository revisions, QuoteLineRepository quoteLines,
                           OrderRepository orders, OrderLineRepository orderLines,
                           BackorderRepository backorders, PricingEngine pricingEngine,
-                          BusinessClock clock, ObjectMapper objectMapper, AppProperties properties) {
+                          BusinessClock clock, ObjectMapper objectMapper, AppProperties properties,
+                          DemoCatalogExtras catalogExtras) {
         this.teams = teams;
         this.profiles = profiles;
         this.delegations = delegations;
@@ -158,6 +160,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         this.clock = clock;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.catalogExtras = catalogExtras;
     }
 
     @Override
@@ -166,7 +169,10 @@ public class DemoDataSeeder implements ApplicationRunner {
         if (profiles.findByEmailIgnoreCase("admin@dealflow.demo").isPresent()
                 && !products.findByCode("LAPTOP").isEmpty()
                 && !quotes.findByReference("Q-DEMO-HIST-01").isEmpty()) {
-            log.info("Demo data already present; seeder skipped");
+            // The scripted fixtures are in place; only the wider storefront
+            // catalogue is topped up, which is idempotent and cheap.
+            catalogExtras.seed();
+            log.info("Demo data already present; core seeder skipped");
             return;
         }
         log.warn("Seeding SYNTHETIC demo data. Nothing in this dataset reflects real customers.");
@@ -235,6 +241,7 @@ public class DemoDataSeeder implements ApplicationRunner {
 
         Warehouse main = warehouse("MAIN", "Main Warehouse", "Mumbai", 10_000L, 1);
         Warehouse east = warehouse("EAST", "East Warehouse", "Kolkata", 15_000L, 2);
+        catalogExtras.seed();
 
         stock(main, laptop14, "4", "2", "6");
         stock(main, dockStd, "10", "3", "12");

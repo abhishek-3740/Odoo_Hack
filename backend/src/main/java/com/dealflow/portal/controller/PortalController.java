@@ -12,7 +12,10 @@ import com.dealflow.portal.dto.PortalDtos.PortalInvoiceSummary;
 import com.dealflow.portal.dto.PortalDtos.PortalQuoteDetail;
 import com.dealflow.portal.dto.PortalDtos.PortalQuoteSummary;
 import com.dealflow.portal.dto.PortalDtos.PortalRequest;
+import com.dealflow.portal.dto.PortalAccountDtos.QuoteRequest;
 import com.dealflow.shared.idempotency.IdempotencyService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import com.dealflow.shared.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -40,16 +43,34 @@ import org.springframework.web.bind.annotation.RestController;
 public class PortalController {
 
     private final PortalService portalService;
+    private final PortalQuoteRequestService quoteRequests;
     private final IdempotencyService idempotency;
 
-    public PortalController(PortalService portalService, IdempotencyService idempotency) {
+    public PortalController(PortalService portalService, PortalQuoteRequestService quoteRequests,
+                            IdempotencyService idempotency) {
         this.portalService = portalService;
+        this.quoteRequests = quoteRequests;
         this.idempotency = idempotency;
     }
 
     @GetMapping("/quotes")
     public ApiResponse<List<PortalQuoteSummary>> quotes(Actor actor) {
         return ApiResponse.of(portalService.listQuotes(actor));
+    }
+
+    /**
+     * Asks for a quotation from the catalogue. Creates a real quotation owned by
+     * the account manager, priced at list, and tells them over the socket.
+     */
+    @PostMapping("/quote-requests")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<PortalQuoteDetail> requestQuote(@RequestHeader(value = "Idempotency-Key", required = false)
+                                                      String idempotencyKey,
+                                                      @Valid @RequestBody QuoteRequest request,
+                                                      Actor actor) {
+        return ApiResponse.of(idempotency.execute(actor, "portal-quote-request", idempotencyKey,
+                request, PortalQuoteDetail.class,
+                () -> quoteRequests.submit(request, actor)));
     }
 
     @GetMapping("/quotes/{quoteId}")

@@ -156,14 +156,22 @@ public class DemoTokenService {
             )
     );
 
+    /** Runs the bootstrap in its own transaction so a lost race cannot poison the caller's. */
+    private final org.springframework.transaction.support.TransactionTemplate ownTransaction;
+
     public DemoTokenService(AppProperties properties,
                             ProfileRepository profiles,
                             TeamRepository teams,
-                            CustomerRepository customers) {
+                            CustomerRepository customers,
+                            org.springframework.transaction.PlatformTransactionManager transactionManager) {
         this.properties = properties;
         this.profiles = profiles;
         this.teams = teams;
         this.customers = customers;
+        this.ownTransaction =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        this.ownTransaction.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
@@ -269,10 +277,29 @@ public class DemoTokenService {
 
     /**
      * Ensures all demo profiles and organizational bindings are present in dealflow.profiles.
+     *
+     * <p>The reference rows here — the "Sales East" team, the two demo customers
+     * — are also created by {@code DemoDataSeeder}, which runs after Tomcat has
+     * already started accepting requests. A sign-in during that window read no
+     * team, tried to insert one, and lost to the seeder's commit on the unique
+     * constraint, surfacing as a meaningless 409. Two parallel first sign-ins
+     * race the same way.
+     *
+     * <p>So the bootstrap runs in its own transaction: a lost race rolls back
+     * only that transaction, never the caller's, and re-reading afterwards sees
+     * the winner's committed row. One retry is enough — the second attempt finds
+     * every row present and inserts nothing.
      */
-    @Transactional
     public void ensureDemoProfilesReady() {
         requireDemoAuthEnabled();
+        try {
+            ownTransaction.executeWithoutResult(status -> bootstrapDemoIdentities());
+        } catch (org.springframework.dao.DataAccessException race) {
+            ownTransaction.executeWithoutResult(status -> bootstrapDemoIdentities());
+        }
+    }
+
+    private void bootstrapDemoIdentities() {
         Team defaultTeam = teams.findByName("Sales East")
                 .orElseGet(() -> teams.save(new Team("Sales East")));
         Customer alphaCustomer = customers.findByNameIgnoreCase("Alpha Traders")
@@ -293,6 +320,15 @@ public class DemoTokenService {
                 profiles.save(profile);
             }
         }
+    }
+
+    /** Whether this email belongs to one of the pre-seeded demo personas. */
+    public boolean isDemoPersona(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        String search = email.trim();
+        return SPECS.stream().anyMatch(spec -> spec.email().equalsIgnoreCase(search));
     }
 
     /** Demo tokens have a dedicated signing key and are deliberately opt-in. */

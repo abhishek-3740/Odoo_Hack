@@ -17,7 +17,7 @@ class DiscountAnomalyDetectorTest {
     private static AppProperties properties() {
         return new AppProperties(
                 new AppProperties.Auth(null, null, "x".repeat(32), "authenticated", true, 60,
-                        List.of("http://localhost:3000"), true, null, null),
+                        List.of("http://localhost:3000"), true, null, null, null),
                 new AppProperties.Billing("Asia/Kolkata", "INR", 15),
                 new AppProperties.Allocation(
                         com.dealflow.fulfillment.models.AllocationModel.Mode.BALANCED, 5000L, 8),

@@ -1,0 +1,15 @@
+{
+  "id": "session-1788616584099",
+  "startedAt": "2026-09-05T13:56:24.099Z",
+  "cwd": "C:\\Users\\divya\\OneDrive\\Desktop\\Odoo_Hack",
+  "context": {},
+  "metrics": {
+    "edits": 0,
+    "commands": 0,
+    "tasks": 0,
+    "errors": 0
+  },
+  "restoredAt": "2026-09-05T14:43:13.445Z",
+  "endedAt": "2026-09-05T17:25:33.574Z",
+  "duration": 12549476
+}
