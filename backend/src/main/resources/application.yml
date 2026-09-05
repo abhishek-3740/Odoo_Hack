@@ -1,0 +1,170 @@
+spring:
+  application:
+    name: dealflow360-api
+
+  datasource:
+    # Local Supabase Postgres by default. Point SPRING_DATASOURCE_URL at the
+    # session pooler (not the transaction pooler) for a hosted project: this is a
+    # persistent backend that relies on prepared statements and advisory locks.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:54322/postgres}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    hikari:
+      # Deliberately small. The ceiling that matters is the database's, shared
+      # across every replica, migration tool and psql session.
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: 1
+      connection-timeout: 10000
+      validation-timeout: 3000
+      max-lifetime: 900000
+      pool-name: dealflow-pool
+
+  jpa:
+    # Flyway owns the schema; Hibernate only checks that the mapping agrees with
+    # it. Schema auto-update is not a migration history.
+    hibernate:
+      ddl-auto: validate
+    # Lazy loading outside a transaction hides N+1 queries and produces
+    # surprises at serialisation time. Fetch what the DTO needs, inside the
+    # transaction that means to fetch it.
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: dealflow
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
+  flyway:
+    enabled: true
+    schemas: dealflow
+    default-schema: dealflow
+    create-schemas: true
+    locations: classpath:db/migration
+    # A hackathon database is disposable; a demo database an hour before judging
+    # is not. Out-of-order and clean are both refused.
+    validate-on-migrate: true
+    clean-disabled: true
+    # Flyway uses the primary DataSource. To migrate with a broader credential
+    # than the runtime role, set SPRING_FLYWAY_USER / SPRING_FLYWAY_PASSWORD
+    # (Boot's relaxed binding) rather than pinning a URL here.
+
+  jackson:
+    # Jackson 3 writes java.time as ISO-8601 strings by default; no date
+    # feature toggles are needed (and the Jackson 2 ones no longer exist).
+    default-property-inclusion: non_null
+
+  threads:
+    virtual:
+      enabled: false
+
+  task:
+    scheduling:
+      # More than one thread so a long billing sweep cannot stall notification
+      # dispatch, and vice versa.
+      pool:
+        size: 4
+      thread-name-prefix: dealflow-job-
+
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.dealflow: ${LOG_LEVEL_APP:INFO}
+    org.hibernate.SQL: ${LOG_LEVEL_SQL:WARN}
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{requestId:--}] %logger{36} - %msg%n"
+
+dealflow:
+  auth:
+    # Local Supabase signs with this fixed development secret. A hosted project
+    # with signing keys enabled should clear it and set jwk-set-uri instead.
+    jwt-secret: ${AUTH_JWT_SECRET:super-secret-jwt-token-with-at-least-32-characters-long}
+    jwk-set-uri: ${AUTH_JWK_SET_URI:}
+    issuer-uri: ${AUTH_ISSUER_URI:http://127.0.0.1:54321/auth/v1}
+    expected-audience: ${AUTH_EXPECTED_AUDIENCE:authenticated}
+    require-audience: true
+    clock-skew-seconds: 60
+    auto-provision-rep: ${AUTH_AUTO_PROVISION_REP:true}
+    allowed-origins: ${APP_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+    supabase-url: ${SUPABASE_URL:http://127.0.0.1:54321}
+    supabase-service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
+
+  billing:
+    timezone: ${BILLING_TIMEZONE:Asia/Kolkata}
+    default-currency: INR
+    invoice-due-days: 15
+
+  allocation:
+    # BALANCED | MIN_SHIPMENTS | MIN_COST — see edge case E12.
+    mode: ${ALLOCATION_MODE:BALANCED}
+    # INR 50.00 per shipment beyond the first.
+    extra-shipment-penalty-minor: 5000
+    exhaustive-warehouse-limit: 8
+
+  recommendations:
+    history-weight: 0.75
+    promotion-weight: 0.15
+    margin-weight: 0.10
+    minimum-history-orders: 5
+    max-results: 5
+    minimum-candidate-margin-percent: 0
+
+  health:
+    stalled-after-hours: 72
+    approval-due-hours: 48
+    nudge-cooldown-hours: 12
+    anomaly-minimum-observations: 5
+    anomaly-minimum-excess-pp: 5
+    anomaly-sigma-multiplier: 2
+    anomaly-std-dev-floor-pp: 2
+    low-stock-lookahead-days: 7
+
+  jobs:
+    enabled: ${JOBS_ENABLED:true}
+    billing-batch-size: 25
+    outbox-batch-size: 50
+    lease-seconds: 120
+    outbox-max-attempts: 8
+
+  demo:
+    mode: ${DEMO_MODE:false}
+    seed-on-startup: ${DEMO_SEED:false}
+    business-date-override: ${DEMO_BUSINESS_DATE:}
+
+  limits:
+    max-quote-lines: 100
+    max-page-size: 100
+    max-export-rows: 1000
