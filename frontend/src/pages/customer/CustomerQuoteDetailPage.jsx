@@ -76,6 +76,12 @@ export function CustomerQuoteDetailPage() {
     loadQuote();
   }, [loadQuote]);
 
+  useEffect(() => {
+    const refresh = e => { if (e.detail?.quoteId === id) loadQuote(true); };
+    window.addEventListener('dealflow:negotiation-updated', refresh);
+    return () => window.removeEventListener('dealflow:negotiation-updated', refresh);
+  }, [id, loadQuote]);
+
   useEffect(() => () => clearTimeout(liveTimer.current), []);
 
   useDealEvents(

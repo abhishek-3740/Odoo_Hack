@@ -40,15 +40,15 @@ export function AdminOverviewPage() {
           api.get('/alerts').catch(() => []),
         ]);
 
-        const quotesList = quotesRes?.content || (Array.isArray(quotesRes) ? quotesRes : []);
-        const approvalsList = approvalsRes?.content || (Array.isArray(approvalsRes) ? approvalsRes : []);
+        const quotesList = quotesRes?.items || quotesRes?.content || (Array.isArray(quotesRes) ? quotesRes : []);
+        const approvalsList = approvalsRes?.items || approvalsRes?.content || (Array.isArray(approvalsRes) ? approvalsRes : []);
         const alertsList = Array.isArray(alertsRes) ? alertsRes : [];
 
-        const pipelineVal = quotesList.reduce((acc, q) => acc + (parseFloat(q.oneTimeNet) || 0), 0);
+        const pipelineVal = quotesList.filter(q => ['DRAFT','REVIEW','SENT','UNDER_NEGOTIATION'].includes(q.stage)).reduce((acc, q) => acc + (parseFloat(q.oneTimeNet) || 0), 0);
 
         setStats({
           totalPipeline: pipelineVal,
-          quoteCount: quotesList.length,
+          quoteCount: quotesRes.totalItems ?? quotesList.length,
           pendingApprovals: approvalsList.length,
           activeAlerts: alertsList.length,
           recentQuotes: quotesList.slice(0, 5),
@@ -105,7 +105,7 @@ export function AdminOverviewPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Pipeline</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Recent open value</span>
             <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
               <TrendingUp className="w-4 h-4" />
             </div>
@@ -113,18 +113,18 @@ export function AdminOverviewPage() {
           <div className="text-2xl font-bold text-slate-900 tabular-nums mt-3">
             {formatINR(stats.totalPipeline)}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">Across active revisions</div>
+          <div className="text-[11px] text-slate-500 mt-1">One-time net in the latest quotations</div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Deals</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Quotations</span>
             <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
               <FileSpreadsheet className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-3">{stats.quoteCount}</div>
-          <div className="text-[11px] text-slate-500 mt-1">In sales queue & negotiations</div>
+          <div className="text-[11px] text-slate-500 mt-1">All quotations you can access</div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">

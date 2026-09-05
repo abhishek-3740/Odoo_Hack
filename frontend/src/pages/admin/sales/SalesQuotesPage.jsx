@@ -28,7 +28,7 @@ export function SalesQuotesPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Quick Create Modal
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(window.location.pathname.endsWith('/new'));
   const [newCustomerId, setNewCustomerId] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newValidUntil, setNewValidUntil] = useState('');
@@ -44,11 +44,12 @@ export function SalesQuotesPage() {
         api.get('/customers').catch(() => []),
       ]);
 
-      const list = quoteData?.content || (Array.isArray(quoteData) ? quoteData : []);
+      const list = quoteData?.items || quoteData?.content || (Array.isArray(quoteData) ? quoteData : []);
+      const customerList = customerData?.items || customerData?.content || (Array.isArray(customerData) ? customerData : []);
       setQuotes(list);
-      setCustomers(Array.isArray(customerData) ? customerData : []);
-      if (Array.isArray(customerData) && customerData.length > 0 && !newCustomerId) {
-        setNewCustomerId(customerData[0].id);
+      setCustomers(customerList);
+      if (customerList.length > 0 && !newCustomerId) {
+        setNewCustomerId(customerList[0].id);
       }
     } catch (err) {
       console.error('Failed to load quotes:', err);
@@ -87,10 +88,13 @@ export function SalesQuotesPage() {
   const stages = [
     'ALL',
     'DRAFT',
-    'INTERNAL_REVIEW',
-    'SHARED_WITH_CUSTOMER',
+    'REVIEW',
+    'SENT',
+    'UNDER_NEGOTIATION',
     'CONFIRMED',
-    'CANCELLED',
+    'LOST',
+    'EXPIRED',
+    'CANCELED',
   ];
 
   const filteredQuotes = quotes.filter((q) => {
@@ -233,7 +237,7 @@ export function SalesQuotesPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                          {q.approvalStatus || 'APPROVED'}
+                          {q.approvalStatus || 'Not evaluated'}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 font-semibold text-slate-900 tabular-nums">
@@ -271,7 +275,7 @@ export function SalesQuotesPage() {
       ) : (
         /* View: Kanban Board */
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {['DRAFT', 'INTERNAL_REVIEW', 'SHARED_WITH_CUSTOMER', 'CONFIRMED'].map((stage) => {
+          {['DRAFT', 'REVIEW', 'SENT', 'CONFIRMED'].map((stage) => {
             const colQuotes = filteredQuotes.filter((q) => q.stage === stage);
             return (
               <div key={stage} className="bg-slate-100/70 rounded-xl p-3.5 border border-slate-200 space-y-3">

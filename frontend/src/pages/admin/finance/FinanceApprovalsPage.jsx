@@ -31,7 +31,7 @@ export function FinanceApprovalsPage() {
     try {
       setRefreshing(true);
       const res = await api.get(`/approval-requests?status=${statusFilter}`);
-      const list = res?.content || (Array.isArray(res) ? res : []);
+      const list = res?.items || res?.content || (Array.isArray(res) ? res : []);
       // Filter for Step 2 or Finance
       setApprovals(list.filter((x) => x.step === 2 || x.requiredRole === 'FINANCE'));
     } catch (err) {
@@ -61,7 +61,8 @@ export function FinanceApprovalsPage() {
     try {
       const payload = {
         decision: decisionType,
-        decisionReason: decisionReason.trim() || `Step 2 Finance ${decisionType} sign-off`,
+        expectedRevisionId: selectedApproval.revisionId,
+        reason: decisionReason.trim() || `Step 2 Finance ${decisionType} sign-off`,
       };
 
       await api.postWithIdempotency(`/approval-requests/${selectedApproval.id}/decisions`, payload);

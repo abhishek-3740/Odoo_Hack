@@ -54,7 +54,7 @@ export function FulfillmentPage() {
       ]);
 
       setStockLevels(Array.isArray(stocksRes) ? stocksRes : []);
-      const orderList = ordersRes?.content || (Array.isArray(ordersRes) ? ordersRes : []);
+      const orderList = ordersRes?.items || ordersRes?.content || (Array.isArray(ordersRes) ? ordersRes : []);
       setOrders(orderList);
       setWarehouses(Array.isArray(whRes) ? whRes : []);
       setVariants(Array.isArray(varRes) ? varRes : []);

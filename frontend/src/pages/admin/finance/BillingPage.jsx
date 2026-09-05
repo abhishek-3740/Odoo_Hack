@@ -47,8 +47,8 @@ export function BillingPage() {
     async function loadCustomers() {
       try {
         setLoading(true);
-        const data = await api.get('/customers').catch(() => []);
-        const list = Array.isArray(data) ? data : [];
+        const data = await api.get('/customers?pageSize=100');
+        const list = data.items || (Array.isArray(data) ? data : []);
         setCustomers(list);
         if (list.length > 0) {
           setSelectedCustomerId(list[0].id);
@@ -72,7 +72,7 @@ export function BillingPage() {
         api.get(`/subscriptions?customerId=${custId}`).catch(() => []),
       ]);
 
-      const invList = invRes?.content || (Array.isArray(invRes) ? invRes : []);
+      const invList = invRes?.items || invRes?.content || (Array.isArray(invRes) ? invRes : []);
       setInvoices(invList);
       setSubscriptions(Array.isArray(subRes) ? subRes : []);
     } catch (err) {

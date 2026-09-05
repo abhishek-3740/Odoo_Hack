@@ -38,7 +38,7 @@ export function ManagerApprovalsPage() {
     try {
       setRefreshing(true);
       const res = await api.get(`/approval-requests?status=${statusFilter}`);
-      const list = res?.content || (Array.isArray(res) ? res : []);
+      const list = res?.items || res?.content || (Array.isArray(res) ? res : []);
       setApprovals(list);
     } catch (err) {
       console.error('Failed to load approval requests:', err);
@@ -63,10 +63,7 @@ export function ManagerApprovalsPage() {
     setSelectedApproval(item);
     try {
       // Evaluate quote to get line terms and risk breakdown
-      const evalRes = await api.post(`/quotes/${item.quoteId}/evaluations`, {
-        lines: [],
-        orderDiscountBp: 0,
-      }).catch(() => null);
+      const evalRes = await api.get(`/quotes/${item.quoteId}`);
       setInspectionData(evalRes);
       setInspectModalOpen(true);
     } catch (err) {
@@ -82,7 +79,8 @@ export function ManagerApprovalsPage() {
     try {
       const payload = {
         decision: decisionType,
-        decisionReason: decisionReason.trim() || `Step 1 ${decisionType} decision recorded`,
+        expectedRevisionId: selectedApproval.revisionId,
+        reason: decisionReason.trim() || `Step 1 ${decisionType} decision recorded`,
       };
 
       await api.postWithIdempotency(`/approval-requests/${selectedApproval.id}/decisions`, payload);

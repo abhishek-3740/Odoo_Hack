@@ -84,4 +84,15 @@ public interface ApprovalRequestRepository extends JpaRepository<ApprovalRequest
     List<ApprovalRequest> findOverdue(@Param("now") Instant now);
 
     long countByStatusAndRequiredRole(ApprovalRequestStatus status, Role requiredRole);
+
+    /** Explicit quote ownership/team scope for assistant summaries. */
+    @Query("""
+            select a from ApprovalRequest a join Quote q on q.id = a.quoteId
+             where a.status = com.dealflow.quotes.models.QuoteEnums.ApprovalRequestStatus.PENDING
+               and (:requiredRole is null or a.requiredRole = :requiredRole)
+               and (:ownerId is null or q.ownerProfileId = :ownerId)
+               and (:teamId is null or q.teamId = :teamId)
+            """)
+    Page<ApprovalRequest> pendingForWorkspace(@Param("requiredRole") Role requiredRole,
+            @Param("ownerId") UUID ownerId, @Param("teamId") UUID teamId, Pageable pageable);
 }

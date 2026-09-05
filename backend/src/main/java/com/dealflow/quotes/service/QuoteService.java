@@ -132,6 +132,10 @@ public class QuoteService {
         revisions.save(revision);
         quote.setCurrentRevisionId(revision.getId());
 
+        // @Version advances at flush. Return the committed version so the next
+        // client mutation does not falsely report an optimistic-lock conflict.
+        quotes.flush();
+
         audit.record(actor, "QUOTE_CREATED", "Quote", quote.getId())
                 .quote(quote.getId()).revision(revision.getId())
                 .after(Map.of("reference", quote.getReference(), "customerId", customer.getId()))
@@ -243,6 +247,7 @@ public class QuoteService {
                         "lineCount", request.lines().size()))
                 .save();
 
+        quotes.flush();
         outbox.publish(OutboxWriter.Events.QUOTE_REVISED, "Quote", quote.getId(),
                 quote.getRowVersion(), Map.of("revisionId", target.getId().toString()),
                 OutboxWriter.RecipientScope.deal(quote.getCustomerId(), quote.getOwnerProfileId(),
@@ -333,6 +338,7 @@ public class QuoteService {
         // identical earlier version: give the coordinator a chance to finalise.
         gateListener.onGatesPossiblyCleared(quote.getId(), actor);
 
+        quotes.flush();
         return evaluationService.toResponse(quote, revision, customer, evaluation,
                 gateListener.findOrderIdForQuote(quoteId).orElse(null), false);
     }
@@ -421,6 +427,7 @@ public class QuoteService {
         }
 
         gateListener.onGatesPossiblyCleared(quote.getId(), actor);
+        quotes.flush();
         return renderCurrent(quote);
     }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, formatINR } from '../../../services/api';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
+import { CompatibilityEditor } from '../../../components/recommendations/CompatibilityEditor';
 import {
   Layers,
   Box,
@@ -21,25 +22,31 @@ export function CatalogAdminPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
 
   const loadData = async () => {
     try {
       setRefreshing(true);
-      const [prod, vars, cats, pln, wh] = await Promise.all([
-        api.get('/products').catch(() => []),
-        api.get('/variants').catch(() => []),
-        api.get('/categories').catch(() => []),
-        api.get('/subscription-plans').catch(() => []),
-        api.get('/warehouses').catch(() => []),
+      setError('');
+      const [prod, cats, pln, wh] = await Promise.all([
+        api.get('/products?pageSize=100'),
+        api.get('/categories'),
+        api.get('/subscription-plans'),
+        api.get('/warehouses'),
       ]);
-
-      setProducts(Array.isArray(prod) ? prod : []);
-      setVariants(Array.isArray(vars) ? vars : []);
+      const allProducts = [...(prod.items || (Array.isArray(prod) ? prod : []))];
+      for (let page = 1; page < (prod.totalPages || 1); page++) {
+        const next = await api.get(`/products?pageSize=100&page=${page}`);
+        allProducts.push(...next.items);
+      }
+      const variantPages = await Promise.all(allProducts.map(p => api.get(`/variants?productId=${p.id}`)));
+      setProducts(allProducts);
+      setVariants(variantPages.flat());
       setCategories(Array.isArray(cats) ? cats : []);
       setPlans(Array.isArray(pln) ? pln : []);
       setWarehouses(Array.isArray(wh) ? wh : []);
     } catch (err) {
-      console.error('Failed to load catalog data:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -60,6 +67,7 @@ export function CatalogAdminPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {error && <p className="error-notice" role="alert">{error}</p>}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -83,8 +91,9 @@ export function CatalogAdminPage() {
         </button>
       </div>
 
+      <CompatibilityEditor variants={variants} onSaved={loadData} />
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 space-x-4">
+      <div className="flex overflow-x-auto border-b border-slate-200 space-x-4">
         {[
           { id: 'products', label: `Products (${products.length})`, icon: Box },
           { id: 'variants', label: `Variants (${variants.length})`, icon: Layers },

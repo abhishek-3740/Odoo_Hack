@@ -15,7 +15,7 @@ export function QuoteCartDrawer({ cart, open, onOpen, onClose, onSubmit, submitt
   return (
     <>
       {cart.count > 0 && !open && (
-        <div className="fixed bottom-20 right-4 z-40">
+        <div className="fixed bottom-36 right-4 z-40">
           <button
             type="button"
             onClick={onOpen}

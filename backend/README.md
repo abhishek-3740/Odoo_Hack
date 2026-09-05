@@ -22,12 +22,12 @@ Two facts about this stack that are not obvious from the code: Spring Boot 4 ren
 ### Prerequisites
 
 - JDK 21 (the Maven wrapper needs `JAVA_HOME` pointing at it)
-- Docker Desktop, for the PostgreSQL container and the integration tests
+- Docker Desktop for integration tests or an optional local PostgreSQL database; not needed to connect to hosted Supabase
 - Node 18+, only for `scripts/create-demo-users.mjs`
 
 ### 1. Database and identity
 
-PostgreSQL 18 in Docker is all the API needs. The migrations are plain PostgreSQL — no extensions, no `auth` schema — so any 16+ server works, hosted Supabase included:
+Use the hosted Supabase session-pooler settings in `backend/.env`. A local Supabase stack is not required. For optional standalone local PostgreSQL testing, any 16+ server works:
 
 ```powershell
 docker run -d --name dealflow-pg18 `
@@ -43,7 +43,7 @@ Identity is separate from storage. Either verification mode works against any da
 
 ### 2. Configure
 
-Copy `.env.example` and fill it in. The defaults already point at the container above. The one decision to make is JWT verification: local Supabase signs with a shared HS256 secret (`AUTH_JWT_SECRET`, default provided); a hosted project with signing keys enabled should clear that and set `AUTH_JWK_SET_URI` instead. Configure exactly one.
+Copy `.env.example` only when `.env` does not already exist, then fill in your database settings. Use exactly one primary JWT verification mode: `AUTH_JWT_SECRET` for shared-secret verification, or `AUTH_JWK_SET_URI` plus `AUTH_ISSUER_URI` for hosted Supabase signing keys. Demo authentication is separate: enable `DEMO_AUTH_ENABLED` with a private `DEMO_JWT_SECRET`. Set `AUTH_LOCAL_JWT_SECRET` for local email/password tokens. Keep `SARVAM_API_KEY` here on the backend only. Do not overwrite an existing `.env` with the example.
 
 ### 3. Run
 
@@ -52,7 +52,7 @@ $env:JAVA_HOME = "C:\path\to\jdk-21"
 .\mvnw.cmd spring-boot:run
 ```
 
-Flyway applies `src/main/resources/db/migration/V1..V5` on first start; Hibernate then validates its mapping against the result (`ddl-auto=validate`) and refuses to boot on any mismatch. Health: `GET /actuator/health`.
+The default port is **8080**, matching the frontend proxy. `PORT` in `.env` can override it. Flyway applies migrations through V7; Hibernate validates the mapping (`ddl-auto=validate`). Health: `http://127.0.0.1:8080/actuator/health`. Start the backend first, then run `npm run dev` from `../frontend` in a second terminal. Vite does not start the backend.
 
 ### 4. Demo data
 

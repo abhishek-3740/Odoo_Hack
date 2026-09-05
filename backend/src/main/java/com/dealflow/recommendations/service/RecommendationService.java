@@ -193,9 +193,9 @@ public class RecommendationService {
     /** Persists a dismissal so the panel stops proposing this item for this version. */
     @Transactional
     public void dismiss(UUID quoteId, UUID variantId, Actor actor) {
-        Quote quote = quotes.findById(quoteId)
+        Quote quote = quotes.findByIdForUpdate(quoteId)
                 .orElseThrow(() -> ApiException.notFound("Quotation " + quoteId));
-        accessPolicy.requireRead(actor, quote);
+        accessPolicy.requireEdit(actor, quote);
 
         UUID revisionId = quote.getCurrentRevisionId();
         if (dismissals.findByRevisionIdAndVariantId(revisionId, variantId).isEmpty()) {
@@ -247,7 +247,7 @@ public class RecommendationService {
             UUID anchorId = (UUID) row.get("anchor_product_id");
             long together = ((Number) row.get("together_count")).longValue();
             long anchorTotal = ((Number) row.get("anchor_total")).longValue();
-            if (anchorTotal == 0) {
+            if (anchorTotal < properties.recommendations().minimumHistoryOrders()) {
                 continue;
             }
             BigDecimal confidence = BigDecimal.valueOf(together)

@@ -1,38 +1,21 @@
-import React from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export function Modal({ isOpen, onClose, title, subtitle, children, maxWidth = 'max-w-lg' }) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4 text-center">
-        {/* Backdrop */}
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in"
-          onClick={onClose}
-        />
-
-        {/* Dialog card */}
-        <div
-          className={`relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all w-full ${maxWidth} border border-slate-200 animate-in zoom-in-95 duration-150`}
-        >
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-              {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
-            </div>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="p-6">{children}</div>
-        </div>
-      </div>
+  const dialog = useRef(null);
+  const titleId = useId();
+  useEffect(() => {
+    if (isOpen) dialog.current?.showModal();
+    else dialog.current?.close();
+  }, [isOpen]);
+  return <dialog ref={dialog} aria-modal="true" aria-labelledby={titleId}
+    onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    className={`common-dialog m-auto max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-white text-left shadow-2xl ${maxWidth}`}>
+    <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div><h2 id={titleId} className="text-base font-semibold text-slate-900">{title}</h2>
+        {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}</div>
+      <button type="button" onClick={onClose} aria-label="Close dialog" className="text-slate-500 rounded-lg p-2 hover:bg-slate-100"><X size={20} /></button>
     </div>
-  );
+    {isOpen && <div className="p-6">{children}</div>}
+  </dialog>;
 }
