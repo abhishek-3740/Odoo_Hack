@@ -109,9 +109,11 @@ logging:
 
 dealflow:
   auth:
-    # Local Supabase signs with this fixed development secret. A hosted project
-    # with signing keys enabled should clear it and set jwk-set-uri instead.
-    jwt-secret: ${AUTH_JWT_SECRET:super-secret-jwt-token-with-at-least-32-characters-long}
+    # Configure exactly one verification mode. Local development supplies its
+    # shared secret through .env; hosted Supabase uses the asymmetric JWKS URL.
+    # Keeping the fallback empty prevents a hosted JWKS configuration from also
+    # activating an implicit local secret.
+    jwt-secret: ${AUTH_JWT_SECRET:}
     jwk-set-uri: ${AUTH_JWK_SET_URI:}
     issuer-uri: ${AUTH_ISSUER_URI:http://127.0.0.1:54321/auth/v1}
     expected-audience: ${AUTH_EXPECTED_AUDIENCE:authenticated}
