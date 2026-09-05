@@ -57,7 +57,7 @@ public final class QuoteDtos {
 
     /** Draft terms, for a read-only evaluation or for saving a revision. */
     public record QuoteDraftRequest(
-            @NotEmpty @Size(max = 100) @Valid List<QuoteLineRequest> lines,
+            @NotEmpty @Size(max = 100) List<@Valid QuoteLineRequest> lines,
             @Min(0) @Max(9999) Integer orderDiscountBp,
             BackorderTerms backorderTerms,
             LocalDate requestedActivationDate,

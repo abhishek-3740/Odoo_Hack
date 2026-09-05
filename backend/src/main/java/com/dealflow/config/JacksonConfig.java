@@ -1,10 +1,12 @@
 package com.dealflow.config;
 
-import tools.jackson.databind.module.SimpleModule;
-import tools.jackson.databind.ser.std.ToStringSerializer;
 import java.math.BigDecimal;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.module.SimpleModule;
+import tools.jackson.databind.ser.std.StdSerializer;
 
 @Configuration
 public class JacksonConfig {
@@ -21,7 +23,30 @@ public class JacksonConfig {
     @Bean
     public SimpleModule exactDecimalModule() {
         SimpleModule module = new SimpleModule("dealflow-exact-decimals");
-        module.addSerializer(BigDecimal.class, ToStringSerializer.instance);
+        module.addSerializer(BigDecimal.class, new ExactDecimalSerializer());
         return module;
+    }
+
+    /**
+     * Writes a decimal as a plain string with one deliberate normalisation.
+     *
+     * <p>Money is always constructed at exactly scale 2 ({@code Money.toMajor}),
+     * and that scale is meaningful: {@code "21000.00"} is the contract. Quantities
+     * and percentages, by contrast, pick up a database scale on the way back —
+     * {@code numeric(18,3)} turns the {@code 4} a client sent into {@code 4.000}.
+     * So trailing zeros are stripped only when the scale is above 2, which
+     * leaves every money value untouched and renders {@code 4.000} as
+     * {@code 4} and {@code 1.500} as {@code 1.5}.
+     */
+    static final class ExactDecimalSerializer extends StdSerializer<BigDecimal> {
+
+        ExactDecimalSerializer() {
+            super(BigDecimal.class);
+        }
+
+        @Override
+        public void serialize(BigDecimal value, JsonGenerator generator, SerializationContext context) {
+            generator.writeString(com.dealflow.shared.money.Money.plainQuantity(value));
+        }
     }
 }

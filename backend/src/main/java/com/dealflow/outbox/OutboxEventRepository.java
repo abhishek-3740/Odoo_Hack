@@ -35,6 +35,8 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
 
     long countByDispatchedAtIsNull();
 
+    List<OutboxEvent> findByAggregateTypeAndAggregateId(String aggregateType, UUID aggregateId);
+
     @Query("select min(e.createdAt) from OutboxEvent e where e.dispatchedAt is null")
     Instant oldestUndispatchedAt();
 }

@@ -1,20 +1,13 @@
 package com.dealflow.jobs;
 
 import com.dealflow.health.DealHealthService;
-import com.dealflow.quotes.Quote;
-import com.dealflow.quotes.QuoteEnums.Stage;
-import com.dealflow.quotes.QuoteRepository;
-import com.dealflow.shared.audit.AuditService;
 import com.dealflow.shared.time.BusinessClock;
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The minute sweep: billing, deal health, and quotation expiry.
@@ -22,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Runs in the persistent backend, independent of any browser being open.
  * Each sweep is leased so two instances of the same sweep cannot overlap, and
  * each is idempotent so an overlap would be harmless anyway.
+ *
+ * <p>This class only schedules. The transactional work lives in services on
+ * other beans, so every call crosses a Spring proxy and its {@code @Transactional}
+ * actually applies.
  *
  * <p>Disabled entirely with {@code dealflow.jobs.enabled=false}, which the
  * integration tests use so a sweep cannot race a test's own assertions.
@@ -36,21 +33,16 @@ public class ScheduledJobs {
 
     private final RecurringBillingJob billingJob;
     private final DealHealthService healthService;
-    private final QuoteRepository quotes;
     private final JobLeaseService leases;
     private final JobRunRepository jobRuns;
-    private final AuditService audit;
     private final BusinessClock clock;
 
     public ScheduledJobs(RecurringBillingJob billingJob, DealHealthService healthService,
-                         QuoteRepository quotes, JobLeaseService leases, JobRunRepository jobRuns,
-                         AuditService audit, BusinessClock clock) {
+                         JobLeaseService leases, JobRunRepository jobRuns, BusinessClock clock) {
         this.billingJob = billingJob;
         this.healthService = healthService;
-        this.quotes = quotes;
         this.leases = leases;
         this.jobRuns = jobRuns;
-        this.audit = audit;
         this.clock = clock;
     }
 
@@ -89,7 +81,7 @@ public class ScheduledJobs {
             return;
         }
         try {
-            int expired = expireQuotes();
+            int expired = healthService.expireQuotes();
             if (expired > 0) {
                 log.info("Marked {} quotations as expired", expired);
             }
@@ -98,27 +90,5 @@ public class ScheduledJobs {
         } finally {
             leases.release(EXPIRY_JOB);
         }
-    }
-
-    /**
-     * Moves open quotations past their validity date to EXPIRED.
-     *
-     * <p>An expired quotation cannot be accepted or finalised — that gate is
-     * checked independently on every command — so this is a visibility change,
-     * not the enforcement mechanism.
-     */
-    @Transactional
-    public int expireQuotes() {
-        List<Quote> expired = quotes.findExpired(
-                List.of(Stage.DRAFT, Stage.REVIEW, Stage.SENT, Stage.UNDER_NEGOTIATION),
-                clock.businessToday());
-        for (Quote quote : expired) {
-            quote.setStage(Stage.EXPIRED);
-            audit.recordSystem("QUOTE_EXPIRED", "Quote", quote.getId())
-                    .quote(quote.getId())
-                    .after(Map.of("validUntil", String.valueOf(quote.getValidUntil())))
-                    .save();
-        }
-        return expired.size();
     }
 }

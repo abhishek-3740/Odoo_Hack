@@ -34,16 +34,13 @@ public class JobController {
 
     private final RecurringBillingJob billingJob;
     private final DealHealthService healthService;
-    private final ScheduledJobs scheduledJobs;
     private final JobRunRepository jobRuns;
     private final AuditService audit;
 
     public JobController(RecurringBillingJob billingJob, DealHealthService healthService,
-                         org.springframework.beans.factory.ObjectProvider<ScheduledJobs> scheduledJobs,
                          JobRunRepository jobRuns, AuditService audit) {
         this.billingJob = billingJob;
         this.healthService = healthService;
-        this.scheduledJobs = scheduledJobs.getIfAvailable();
         this.jobRuns = jobRuns;
         this.audit = audit;
     }
@@ -61,12 +58,8 @@ public class JobController {
                 yield Map.of("job", ScheduledJobs.HEALTH_JOB, "open", summary.opened(),
                         "resolved", summary.resolved());
             }
-            case ScheduledJobs.EXPIRY_JOB -> {
-                if (scheduledJobs == null) {
-                    throw new ApiException(ErrorCode.CONFLICTING_STATE, "Scheduled jobs are disabled.");
-                }
-                yield Map.of("job", ScheduledJobs.EXPIRY_JOB, "expired", scheduledJobs.expireQuotes());
-            }
+            case ScheduledJobs.EXPIRY_JOB ->
+                    Map.of("job", ScheduledJobs.EXPIRY_JOB, "expired", healthService.expireQuotes());
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "Unknown job. Use recurring-billing, deal-health or quote-expiry.");
         };

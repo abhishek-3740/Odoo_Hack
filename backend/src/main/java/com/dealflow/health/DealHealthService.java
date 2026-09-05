@@ -25,6 +25,7 @@ import com.dealflow.quotes.QuoteRepository;
 import com.dealflow.quotes.QuoteRevisionRepository;
 import com.dealflow.shared.audit.AuditService;
 import com.dealflow.shared.error.ApiException;
+import com.dealflow.shared.money.Money;
 import com.dealflow.shared.time.BusinessClock;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -253,8 +254,8 @@ public class DealHealthService {
             if (pastPromise) {
                 reasons.add(Map.of("code", "PAST_PROMISED_DATE",
                         "promisedDate", line.getPromisedDate().toString(),
-                        "outstandingQuantity", backorder.getQuantity().toPlainString(),
-                        "message", backorder.getQuantity().toPlainString()
+                        "outstandingQuantity", Money.plainQuantity(backorder.getQuantity()),
+                        "message", Money.plainQuantity(backorder.getQuantity())
                                 + " units are still unshipped past the promised date."));
             }
             if (receiptTooLate) {
@@ -290,12 +291,12 @@ public class DealHealthService {
             upsert(AlertType.LOW_STOCK, Severity.INFO, key,
                     "Stock at or below its reorder point",
                     List.of(Map.of("code", "BELOW_REORDER_POINT",
-                            "available", level.available().toPlainString(),
-                            "reorderPoint", level.getReorderPoint().toPlainString(),
-                            "suggestedOrderQuantity", level.replenishmentSuggestion().toPlainString(),
-                            "message", "Available " + level.available().toPlainString()
+                            "available", Money.plainQuantity(level.available()),
+                            "reorderPoint", Money.plainQuantity(level.getReorderPoint()),
+                            "suggestedOrderQuantity", Money.plainQuantity(level.replenishmentSuggestion()),
+                            "message", "Available " + Money.plainQuantity(level.available())
                                     + " is at or below the reorder point of "
-                                    + level.getReorderPoint().toPlainString() + ".")),
+                                    + Money.plainQuantity(level.getReorderPoint()) + ".")),
                     now, alert -> alert.setVariantId(level.getVariantId()));
         }
         return low.size();
@@ -316,7 +317,7 @@ public class DealHealthService {
                     List.of(Map.of("code", "INVOICE_PAST_DUE",
                             "dueDate", invoice.getDueDate().toString(),
                             "outstandingMinor", invoice.outstandingMinor(),
-                            "message", com.dealflow.shared.money.Money.format(
+                            "message", Money.format(
                                     invoice.outstandingMinor()) + " remains outstanding.")),
                     now, alert -> alert.setInvoiceId(invoice.getId()));
         }
@@ -430,6 +431,30 @@ public class DealHealthService {
                 OutboxWriter.RecipientScope.owner(recipient));
 
         return notification;
+    }
+
+    // --------------------------------------------------------------- expiry
+
+    /**
+     * Moves open quotations past their validity date to EXPIRED.
+     *
+     * <p>An expired quotation cannot be accepted or finalised — that gate is
+     * checked independently on every command — so this is a visibility change,
+     * not the enforcement mechanism. Lives here rather than on the scheduler so
+     * the scheduled sweep and the manual job endpoint share one transactional
+     * implementation.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int expireQuotes() {
+        List<Quote> expired = quotes.findExpired(OPEN_STAGES, clock.businessToday());
+        for (Quote quote : expired) {
+            quote.setStage(Stage.EXPIRED);
+            audit.recordSystem("QUOTE_EXPIRED", "Quote", quote.getId())
+                    .quote(quote.getId())
+                    .after(Map.of("validUntil", String.valueOf(quote.getValidUntil())))
+                    .save();
+        }
+        return expired.size();
     }
 
     // -------------------------------------------------------------- helpers

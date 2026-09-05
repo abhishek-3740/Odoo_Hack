@@ -18,8 +18,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -27,10 +28,16 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <h2>Each subscription is its own transaction</h2>
  *
- * <p>The sweep finds due subscriptions, then charges each one in a separate
+ * <p>The sweep finds due subscriptions, then charges each one inside a separate
  * {@code REQUIRES_NEW} transaction under a row lock. One bad subscription fails
  * alone; the other twenty-four in the batch still bill. A batch is bounded, and
  * whatever is left stays due for the next run.
+ *
+ * <p>The per-item transaction is opened with an explicit
+ * {@link TransactionTemplate} rather than a {@code @Transactional} method on
+ * this class. A bean calling its own annotated method goes around the Spring
+ * proxy, so the annotation would silently do nothing — the lock and the
+ * subscription update would run with no transaction at all.
  *
  * <h2>Catch-up bills each missed interval once</h2>
  *
@@ -56,11 +63,12 @@ public class RecurringBillingJob {
     private final BusinessClock clock;
     private final ObjectMapper objectMapper;
     private final AppProperties properties;
+    private final TransactionTemplate perSubscription;
 
     public RecurringBillingJob(SubscriptionRepository subscriptions, SubscriptionChangeRepository changes,
                                BillingService billingService, JobRunRepository jobRuns,
                                JobLeaseService leases, BusinessClock clock, ObjectMapper objectMapper,
-                               AppProperties properties) {
+                               AppProperties properties, PlatformTransactionManager transactionManager) {
         this.subscriptions = subscriptions;
         this.changes = changes;
         this.billingService = billingService;
@@ -69,6 +77,8 @@ public class RecurringBillingJob {
         this.clock = clock;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.perSubscription = new TransactionTemplate(transactionManager);
+        this.perSubscription.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public record RunSummary(UUID jobRunId, int processed, int failed, boolean skippedNoLease) {
@@ -92,7 +102,7 @@ public class RecurringBillingJob {
                     .toList();
             for (UUID subscriptionId : due) {
                 try {
-                    chargeOne(subscriptionId, businessToday);
+                    perSubscription.executeWithoutResult(status -> chargeOne(subscriptionId, businessToday));
                     processed++;
                 } catch (Exception ex) {
                     failed++;
@@ -113,13 +123,12 @@ public class RecurringBillingJob {
     }
 
     /**
-     * Charges one subscription in its own transaction.
+     * Charges one subscription. Always invoked inside {@link #perSubscription}.
      *
      * <p>Re-reads the row under a lock: the "due" list was computed a moment ago
      * without one, and the subscription may have been cancelled since.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
-    public void chargeOne(UUID subscriptionId, LocalDate businessToday) {
+    private void chargeOne(UUID subscriptionId, LocalDate businessToday) {
         Subscription subscription = subscriptions.findByIdForUpdate(subscriptionId).orElse(null);
         if (subscription == null || subscription.getNextBillAt() == null
                 || subscription.getNextBillAt().isAfter(businessToday)

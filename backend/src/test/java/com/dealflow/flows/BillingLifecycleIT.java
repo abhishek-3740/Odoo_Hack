@@ -65,7 +65,7 @@ class BillingLifecycleIT extends AbstractIntegrationTest {
         assertThat(applied.getStatusCode().value()).as(applied.getBody()).isEqualTo(200);
         JsonNode change = json(applied.getBody()).get("data");
         assertThat(change.get("applied").asBoolean()).isTrue();
-        assertThat(change.get("adjustmentInvoiceId").isNull()).isFalse();
+        assertThat(absentOrNull(change, "adjustmentInvoiceId")).isFalse();
         assertThat(subscriptions.findById(live.subscriptionId).orElseThrow().getQuantity())
                 .isEqualByComparingTo("15");
 
@@ -106,7 +106,7 @@ class BillingLifecycleIT extends AbstractIntegrationTest {
         assertThat(cancelled.getStatusCode().value()).as(cancelled.getBody()).isEqualTo(200);
         JsonNode result = json(cancelled.getBody()).get("data");
         assertThat(result.get("adjustmentNet").asText()).isEqualTo("-3000.00");
-        assertThat(result.get("creditNoteId").isNull()).isFalse();
+        assertThat(absentOrNull(result, "creditNoteId")).isFalse();
 
         Subscription subscription = subscriptions.findById(live.subscriptionId).orElseThrow();
         assertThat(subscription.getStatus()).isEqualTo(Subscription.SubscriptionStatus.CANCELED);
@@ -156,7 +156,9 @@ class BillingLifecycleIT extends AbstractIntegrationTest {
         RecurringBillingJob.RunSummary first = billingJob.run(JobRun.Trigger.MANUAL);
         RecurringBillingJob.RunSummary second = billingJob.run(JobRun.Trigger.MANUAL);
         assertThat(first.skippedNoLease()).isFalse();
+        assertThat(first.failed()).as("a swallowed per-subscription failure is still a failure").isZero();
         assertThat(second.skippedNoLease()).isFalse();
+        assertThat(second.failed()).isZero();
 
         List<Invoice> all = invoices.findBySubscriptionId(live.subscriptionId);
         assertThat(all).as("first period + exactly one renewal").hasSize(2);

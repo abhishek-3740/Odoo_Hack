@@ -199,11 +199,13 @@ public class PortalService {
 
         if (type == NegotiationType.COMMENT) {
             // Text is text. It never becomes a discount, and it never
-            // invalidates an approval already given.
+            // invalidates an approval already given. It IS the customer
+            // responding, though, so it counts as external progress and clears
+            // the stall timer (edge case E22) — unlike a rep's own edits.
             record.setPayload(objectMapper.writeValueAsString(Map.of("message",
                     request.message() == null ? "" : request.message())));
             negotiations.save(record);
-            quote.touchActivity(now);
+            quote.recordProgress(now);
 
             audit.record(actor, "PORTAL_COMMENT", "Quote", quote.getId())
                     .quote(quote.getId()).revision(current.getId())

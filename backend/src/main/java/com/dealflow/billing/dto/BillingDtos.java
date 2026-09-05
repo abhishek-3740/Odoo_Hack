@@ -37,7 +37,7 @@ public final class BillingDtos {
             @NotNull @Size(max = 40) String method,
             @Size(max = 120) String externalReference,
             @Size(max = 500) String note,
-            @Valid List<PaymentAllocationRequest> allocations) {
+            List<@Valid PaymentAllocationRequest> allocations) {
     }
 
     public record RecordRefundRequest(

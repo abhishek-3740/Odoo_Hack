@@ -157,7 +157,7 @@ class FlowBNegotiationIT extends AbstractIntegrationTest {
                 .retrieve().toEntity(String.class).getBody()).get("data");
         assertThat(conditional.get("accepted").asBoolean()).isTrue();
         assertThat(conditional.get("conditional").asBoolean()).isTrue();
-        assertThat(conditional.get("orderReference").isNull()).isTrue();
+        assertThat(absentOrNull(conditional, "orderReference")).isTrue();
 
         // ---- seller adopts the customer's proposal; approvals clear; the order finalises
         ResponseEntity<String> adopted = post("/api/v1/quotes/" + quoteId + "/adoptions", repToken)
@@ -185,7 +185,7 @@ class FlowBNegotiationIT extends AbstractIntegrationTest {
         assertThat(fulfillment.get("backorders")).hasSize(1);
         assertThat(fulfillment.get("backorders").get(0).get("quantity").asText()).isEqualTo("1");
         // No expected receipt is recorded, so no date is invented (E09).
-        assertThat(fulfillment.get("backorders").get(0).get("expectedDate").isNull()).isTrue();
+        assertThat(absentOrNull(fulfillment.get("backorders").get(0), "expectedDate")).isTrue();
 
         // ---- one-time invoice 38,950 and a separate 3,000 recurring invoice
         JsonNode invoices = json(get("/api/v1/invoices?orderId=" + orderId, financeToken)

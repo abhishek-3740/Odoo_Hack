@@ -204,6 +204,16 @@ public abstract class AbstractIntegrationTest {
         return objectMapper.readTree(body == null ? "{}" : body);
     }
 
+    /**
+     * True when a field is null or not present at all. The API omits null
+     * fields ({@code default-property-inclusion: non_null}), so an absent key
+     * is the normal representation of "no value".
+     */
+    protected static boolean absentOrNull(tools.jackson.databind.JsonNode node, String field) {
+        tools.jackson.databind.JsonNode value = node == null ? null : node.get(field);
+        return value == null || value.isNull();
+    }
+
     protected String toJson(Object value) {
         return objectMapper.writeValueAsString(value);
     }

@@ -83,6 +83,37 @@ Stock is seeded as the demo script expects: Main 4 laptops / 10 docks, East 1 la
 
 The integration tests apply the real migrations to a real PostgreSQL and exercise concurrency with real transactions. A skipped Docker-dependent suite is not a pass.
 
+### Test evidence
+
+Recorded 5 September 2026 on Windows 11 with Temurin JDK 21.0.12.1, Maven 3.9.16 (wrapper), Spring Boot 4.1.1, Docker Desktop 29.5.3, PostgreSQL 16 via Testcontainers (`postgres:16-alpine`).
+
+`.\mvnw.cmd verify` → **BUILD SUCCESS**, 84 tests, 0 failures, about 30 s.
+
+| Suite | Tests | Plan coverage |
+|---|---|---|
+| `PricingEngineTest` | 11 | T02 (10% + 10% = 19%), Flow B totals to the paisa, rounding reconciliation, E03 zero-net refusal |
+| `RiskEngineTest` | 14 | T03 (M = 8, E = 400, W = 0.8333 → Finance), E02 negative-overage, T04 line splitting, T05 aggregate cap, E04 promotion, boundary conventions |
+| `AllocationEngineTest` | 11 | E12 (INR 500 vs 100 + 50), E09 zero stock, Flow B split, conservation, determinism, 8-warehouse exhaustive search |
+| `ProrationCalculatorTest` | 19 | E13 (35,100 vs 35,000), E15 (51.61), T14 anchor preservation incl. leap February, cancellation credit 1,500 by segment |
+| `DiscountAnomalyDetectorTest` | 9 | E23 no baseline for a new rep, T22 outlier vs normal, sigma floor |
+| `FlowAEndToEndIT` | 2 | The ordinary sale end to end through HTTP with real tokens; T08 portal isolation; T20 partial then full payment; E20 negotiation closed after order |
+| `FlowBNegotiationIT` | 2 | T06 Finance-before-Manager, E05 immutable decision, T07 counteroffer re-routing, E19 stale acceptance, conditional acceptance, T10 split + backorder, T11 duplicate receipt, T12 consolidation, IN_STOCK_ONLY rollback |
+| `ConcurrencyAndIdempotencyIT` | 4 | T13 two simultaneous acceptances → one order; T10 last-unit race → no oversell; T27 key reuse → 409; E06 stale row version |
+| `BillingLifecycleIT` | 3 | T15 prorated adjustment once, T18 replay, E16 backdating refused, T17 cancellation credit without refund of unpaid money, T19 billing job idempotence |
+| `RecommendationIT` | 2 | T09 "appeared in 4 of 6 orders", dismissal persists, limited-history labelling |
+| `HealthAndReportingIT` | 4 | T21/E22 stall timer survives rep edits and resends but clears on customer reply, nudge + inbox + rate limit, LOW_STOCK suggestion, T24 scoped report with genuine PDF/XLSX/XLS bytes, I04 outbox marking |
+| `WebSocketSecurityIT` | 3 | I02 anonymous CONNECT refused, foreign subscription closes the session, I03/I04 a committed event reaches the authenticated owner |
+
+Not covered by automation, and said so: a real month boundary elapsing (T14 is unit-tested on the calendar arithmetic only), STOMP token expiry mid-session, and browser journeys (Playwright belongs to the frontend repository).
+
+### Resetting the demo database
+
+```powershell
+# local Supabase: drop only the application schema, then restart with the seed on
+psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "drop schema dealflow cascade"
+$env:DEMO_SEED = "true"; .\mvnw.cmd spring-boot:run
+```
+
 ## How it is put together
 
 ```

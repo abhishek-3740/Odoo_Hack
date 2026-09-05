@@ -3,12 +3,16 @@ package com.dealflow.shared.audit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
 
 /**
  * An append-only record of who changed what.
@@ -23,11 +27,27 @@ import org.hibernate.type.SqlTypes;
  */
 @Entity
 @Table(name = "audit_events")
-public class AuditEvent {
+public class AuditEvent implements Persistable<UUID> {
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id = UUID.randomUUID();
+
+    /** See {@code BaseEntity}: a pre-assigned id must still persist, not merge. */
+    @Transient
+    private boolean persisted;
+
+    @PostPersist
+    @PostLoad
+    void markPersisted() {
+        persisted = true;
+    }
+
+    @Override
+    @Transient
+    public boolean isNew() {
+        return !persisted;
+    }
 
     @Column(name = "actor_profile_id")
     private UUID actorProfileId;
@@ -84,6 +104,7 @@ public class AuditEvent {
         this.occurredAt = occurredAt;
     }
 
+    @Override
     public UUID getId() {
         return id;
     }

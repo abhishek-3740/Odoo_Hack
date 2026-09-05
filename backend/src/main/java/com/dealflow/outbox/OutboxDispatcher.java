@@ -16,10 +16,10 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -41,7 +41,6 @@ import tools.jackson.databind.ObjectMapper;
  * receives events for their own company (verification I05).
  */
 @Component
-@ConditionalOnProperty(prefix = "dealflow.jobs", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class OutboxDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxDispatcher.class);
@@ -52,23 +51,29 @@ public class OutboxDispatcher {
     private final BusinessClock clock;
     private final ObjectMapper objectMapper;
     private final AppProperties properties;
+    private final TransactionTemplate batchTransaction;
 
     public OutboxDispatcher(OutboxEventRepository outbox, ProfileRepository profiles,
                             DealEventPublisher publisher, BusinessClock clock,
-                            ObjectMapper objectMapper, AppProperties properties) {
+                            ObjectMapper objectMapper, AppProperties properties,
+                            PlatformTransactionManager transactionManager) {
         this.outbox = outbox;
         this.profiles = profiles;
         this.publisher = publisher;
         this.clock = clock;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.batchTransaction = new TransactionTemplate(transactionManager);
     }
 
     /** Short sweep so an approval reaches the screen within a couple of seconds. */
     @Scheduled(fixedDelayString = "PT1S", initialDelayString = "PT5S")
     public void sweep() {
+        if (!properties.jobs().enabled()) {
+            return;
+        }
         try {
-            int sent = dispatchBatch();
+            int sent = dispatchNow();
             if (sent > 0) {
                 log.debug("Dispatched {} outbox events", sent);
             }
@@ -79,14 +84,26 @@ public class OutboxDispatcher {
     }
 
     /**
-     * Claims and delivers one batch in one transaction.
+     * Runs one delivery pass immediately, in its own transaction.
+     *
+     * <p>Exposed so an operator action or a test can drive delivery without
+     * waiting for the scheduler; it is the same code path the sweep uses.
+     */
+    public int dispatchNow() {
+        Integer sent = batchTransaction.execute(status -> dispatchBatch());
+        return sent == null ? 0 : sent;
+    }
+
+    /**
+     * Claims and delivers one batch. Must run inside a transaction, which
+     * {@link #sweep()} provides through an explicit template — an annotation on
+     * this method would be bypassed by the in-class call.
      *
      * <p>{@code FOR UPDATE SKIP LOCKED} lets an overlapping sweep take different
      * rows rather than blocking. Sending happens while the rows are locked, and
      * the lock is a row lock on outbox rows only — never on any business table.
      */
-    @Transactional
-    public int dispatchBatch() {
+    int dispatchBatch() {
         Instant now = clock.now();
         List<OutboxEvent> claimed = outbox.claimDue(now, properties.jobs().outboxBatchSize());
         if (claimed.isEmpty()) {

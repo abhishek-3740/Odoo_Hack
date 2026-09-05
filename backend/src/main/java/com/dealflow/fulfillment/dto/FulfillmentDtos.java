@@ -35,7 +35,7 @@ public final class FulfillmentDtos {
      * two later" (edge case E11).
      */
     public record OverrideAllocationRequest(
-            @NotEmpty @Valid List<AllocationLineRequest> allocations,
+            @NotEmpty List<@Valid AllocationLineRequest> allocations,
             @Size(max = 500) String reason) {
     }
 

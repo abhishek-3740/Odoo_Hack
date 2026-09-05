@@ -82,4 +82,27 @@ public final class Money {
     public static String format(long minor) {
         return toMajor(minor).toPlainString();
     }
+
+    /**
+     * Renders a quantity or percentage without the scale it picked up in the
+     * database: {@code numeric(18,3)} turns the {@code 4} a client sent into
+     * {@code 4.000}. Trailing zeros are stripped only above scale 2, so a money
+     * value built at exactly scale 2 is never touched — {@code "21000.00"} stays
+     * the contract while {@code 4.000} becomes {@code 4} and {@code 1.500}
+     * becomes {@code 1.5}.
+     */
+    public static String plainQuantity(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal normalised = value;
+        if (normalised.scale() > MINOR_SCALE) {
+            normalised = normalised.stripTrailingZeros();
+            if (normalised.scale() < 0) {
+                // stripTrailingZeros can produce 1E+1 for 10.000; keep it plain.
+                normalised = normalised.setScale(0);
+            }
+        }
+        return normalised.toPlainString();
+    }
 }
