@@ -1,0 +1,193 @@
+/* ==========================================================================
+   DealFlow360 — landing page design system
+   Scoped under .ld-root / html.ld-active so nothing here leaks into the
+   light-themed application shell.
+   ========================================================================== */
+
+.ld-root {
+  --ld-bg: #05060a;
+  --ld-raised: #0a0c13;
+  --ld-line: rgba(255, 255, 255, 0.07);
+  --ld-line-strong: rgba(255, 255, 255, 0.13);
+  --ld-text: #f8fafc;
+  --ld-muted: #94a3b8;
+  --ld-dim: #64748b;
+  --ld-accent: #6366f1;
+  --ld-accent-soft: #818cf8;
+  --ld-violet: #8b5cf6;
+  --ld-cyan: #22d3ee;
+
+  background-color: var(--ld-bg);
+  color: var(--ld-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Dark scrollbar, applied only while the landing page is mounted. */
+html.ld-active {
+  scrollbar-color: #1e293b var(--ld-bg, #05060a);
+}
+html.ld-active ::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+html.ld-active ::-webkit-scrollbar-track {
+  background: #05060a;
+}
+html.ld-active ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 999px;
+  border: 2px solid #05060a;
+}
+html.ld-active ::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* --------------------------------------------------------------------------
+   Film grain — kills gradient banding and gives the dark surfaces texture.
+   -------------------------------------------------------------------------- */
+.ld-grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* --------------------------------------------------------------------------
+   Card surface — faint inner highlight along the top edge, gradient hairline
+   border, and a glow that follows the pointer.
+   -------------------------------------------------------------------------- */
+.ld-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  border: 1px solid var(--ld-line);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: border-color 0.35s ease, transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+.ld-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(
+    420px circle at var(--ld-mx, 50%) var(--ld-my, 0%),
+    rgba(129, 140, 248, 0.5),
+    transparent 45%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.ld-card:hover {
+  border-color: var(--ld-line-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.9);
+}
+
+.ld-card:hover::before {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Gradient hairline used as a section separator.
+   -------------------------------------------------------------------------- */
+.ld-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148, 163, 184, 0.22) 20%,
+    rgba(148, 163, 184, 0.22) 80%,
+    transparent
+  );
+}
+
+/* --------------------------------------------------------------------------
+   Gridded backdrop for the terminal-style panels.
+   -------------------------------------------------------------------------- */
+.ld-grid {
+  background-image: linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px);
+  background-size: 46px 46px;
+  background-position: center center;
+}
+
+/* --------------------------------------------------------------------------
+   Live status dot.
+   -------------------------------------------------------------------------- */
+@keyframes ld-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+.ld-dot {
+  animation: ld-breathe 2.4s ease-in-out infinite;
+}
+
+/* Skeleton shimmer for stats that are still loading. */
+@keyframes ld-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.ld-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.1);
+}
+.ld-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.16), transparent);
+  animation: ld-shimmer 1.5s infinite;
+}
+
+/* Marquee for the stack strip. */
+@keyframes ld-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ld-marquee {
+  display: flex;
+  width: max-content;
+  animation: ld-marquee 42s linear infinite;
+}
+.ld-marquee:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-dot,
+  .ld-skeleton::after,
+  .ld-marquee {
+    animation: none;
+  }
+  .ld-card:hover {
+    transform: none;
+  }
+}

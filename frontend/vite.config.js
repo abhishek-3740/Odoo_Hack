@@ -27,11 +27,19 @@ export default defineConfig(({ mode }) => {
     strictPort: true,
     proxy: {
       '/api': {
+<<<<<<< HEAD
         target,
         changeOrigin: true,
       },
       '/ws': {
         target,
+=======
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'http://localhost:8080',
+>>>>>>> 0a034ca (Landing Page & Report PDF)
         ws: true,
         changeOrigin: true,
       },

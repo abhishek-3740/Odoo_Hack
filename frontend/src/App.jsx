@@ -8,6 +8,7 @@ import { CustomerLayout } from './layouts/CustomerLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 
 // Public & Auth Pages
+import { LandingPage } from './pages/landing/LandingPage';
 import { HomePage } from './pages/public/HomePage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { SignupPage } from './pages/auth/SignupPage';
@@ -63,7 +64,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           {/* Public storefront & authentication */}
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/catalog" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/signup/staff" element={<StaffSignupPage />} />
