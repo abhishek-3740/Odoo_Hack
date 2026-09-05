@@ -1,6 +1,11 @@
 package com.dealflow.quotes.dto;
 
-import com.dealflow.quotes.QuoteEnums.BackorderTerms;
+
+import com.dealflow.quotes.models.*;
+import com.dealflow.quotes.repo.*;
+import com.dealflow.quotes.service.*;
+import com.dealflow.quotes.controller.*;
+import com.dealflow.quotes.models.QuoteEnums.BackorderTerms;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -57,7 +62,7 @@ public final class QuoteDtos {
 
     /** Draft terms, for a read-only evaluation or for saving a revision. */
     public record QuoteDraftRequest(
-            @NotEmpty @Size(max = 100) @Valid List<QuoteLineRequest> lines,
+            @NotEmpty @Size(max = 100) List<@Valid QuoteLineRequest> lines,
             @Min(0) @Max(9999) Integer orderDiscountBp,
             BackorderTerms backorderTerms,
             LocalDate requestedActivationDate,

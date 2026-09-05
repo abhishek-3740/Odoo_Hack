@@ -1,7 +1,10 @@
 package com.dealflow.config;
 
 import java.time.Clock;
+import org.apache.coyote.http11.Http11Nio2Protocol;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -19,5 +22,16 @@ public class CoreConfig {
     @Bean
     public Clock clock() {
         return Clock.systemUTC();
+    }
+
+    /**
+     * Use Tomcat's asynchronous channel transport. Besides scaling well for
+     * long-lived WebSocket connections, NIO2 avoids the JDK selector wake-up
+     * pipe that can fail on Windows when Unix-domain loopback sockets are
+     * unavailable or broken.
+     */
+    @Bean
+    public WebServerFactoryCustomizer<TomcatServletWebServerFactory> tomcatNio2Protocol() {
+        return factory -> factory.setProtocol(Http11Nio2Protocol.class.getName());
     }
 }

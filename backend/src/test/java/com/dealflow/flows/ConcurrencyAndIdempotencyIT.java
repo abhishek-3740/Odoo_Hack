@@ -2,14 +2,14 @@ package com.dealflow.flows;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.dealflow.auth.Profile;
-import com.dealflow.auth.Role;
-import com.dealflow.catalog.CatalogEnums.CustomerTier;
-import com.dealflow.catalog.Customer;
-import com.dealflow.catalog.ProductVariant;
-import com.dealflow.fulfillment.BackorderRepository;
-import com.dealflow.fulfillment.Warehouse;
-import com.dealflow.orders.OrderRepository;
+import com.dealflow.auth.models.Profile;
+import com.dealflow.auth.models.Role;
+import com.dealflow.catalog.models.CatalogEnums.CustomerTier;
+import com.dealflow.catalog.models.Customer;
+import com.dealflow.catalog.models.ProductVariant;
+import com.dealflow.fulfillment.repo.BackorderRepository;
+import com.dealflow.fulfillment.models.Warehouse;
+import com.dealflow.orders.repo.OrderRepository;
 import com.dealflow.support.AbstractIntegrationTest;
 import java.util.ArrayList;
 import java.util.List;

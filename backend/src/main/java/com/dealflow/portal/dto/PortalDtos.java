@@ -1,5 +1,10 @@
 package com.dealflow.portal.dto;
 
+
+import com.dealflow.portal.models.*;
+import com.dealflow.portal.repo.*;
+import com.dealflow.portal.service.*;
+import com.dealflow.portal.controller.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -43,7 +48,7 @@ public final class PortalDtos {
             @NotNull String requestType,
             @Size(max = 64) String lineKey,
             @Size(max = 2000) String message,
-            @Valid List<CounterLineRequest> lines,
+            List<@Valid CounterLineRequest> lines,
             @Min(0) @Max(9999) Integer requestedOrderDiscountBp,
             /* The version the customer was looking at. A mismatch is refused
              * rather than applied to whatever is current now. */

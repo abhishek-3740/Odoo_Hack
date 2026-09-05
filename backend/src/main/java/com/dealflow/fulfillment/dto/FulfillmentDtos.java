@@ -1,5 +1,10 @@
 package com.dealflow.fulfillment.dto;
 
+
+import com.dealflow.fulfillment.models.*;
+import com.dealflow.fulfillment.repo.*;
+import com.dealflow.fulfillment.service.*;
+import com.dealflow.fulfillment.controller.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
@@ -35,7 +40,7 @@ public final class FulfillmentDtos {
      * two later" (edge case E11).
      */
     public record OverrideAllocationRequest(
-            @NotEmpty @Valid List<AllocationLineRequest> allocations,
+            @NotEmpty List<@Valid AllocationLineRequest> allocations,
             @Size(max = 500) String reason) {
     }
 

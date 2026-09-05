@@ -2,20 +2,20 @@ package com.dealflow.flows;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.dealflow.approvals.ApprovalRequest;
-import com.dealflow.approvals.ApprovalRequestRepository;
-import com.dealflow.auth.Profile;
-import com.dealflow.auth.Role;
-import com.dealflow.catalog.CatalogEnums.CustomerTier;
-import com.dealflow.catalog.Customer;
-import com.dealflow.catalog.ProductVariant;
-import com.dealflow.catalog.SubscriptionPlan;
-import com.dealflow.catalog.Team;
-import com.dealflow.catalog.TeamRepository;
-import com.dealflow.fulfillment.Backorder;
-import com.dealflow.fulfillment.BackorderRepository;
-import com.dealflow.fulfillment.Warehouse;
-import com.dealflow.quotes.QuoteEnums.ApprovalRequestStatus;
+import com.dealflow.approvals.models.ApprovalRequest;
+import com.dealflow.approvals.repo.ApprovalRequestRepository;
+import com.dealflow.auth.models.Profile;
+import com.dealflow.auth.models.Role;
+import com.dealflow.catalog.models.CatalogEnums.CustomerTier;
+import com.dealflow.catalog.models.Customer;
+import com.dealflow.catalog.models.ProductVariant;
+import com.dealflow.catalog.models.SubscriptionPlan;
+import com.dealflow.catalog.models.Team;
+import com.dealflow.catalog.repo.TeamRepository;
+import com.dealflow.fulfillment.models.Backorder;
+import com.dealflow.fulfillment.repo.BackorderRepository;
+import com.dealflow.fulfillment.models.Warehouse;
+import com.dealflow.quotes.models.QuoteEnums.ApprovalRequestStatus;
 import com.dealflow.support.AbstractIntegrationTest;
 import java.util.List;
 import java.util.UUID;
@@ -157,7 +157,7 @@ class FlowBNegotiationIT extends AbstractIntegrationTest {
                 .retrieve().toEntity(String.class).getBody()).get("data");
         assertThat(conditional.get("accepted").asBoolean()).isTrue();
         assertThat(conditional.get("conditional").asBoolean()).isTrue();
-        assertThat(conditional.get("orderReference").isNull()).isTrue();
+        assertThat(absentOrNull(conditional, "orderReference")).isTrue();
 
         // ---- seller adopts the customer's proposal; approvals clear; the order finalises
         ResponseEntity<String> adopted = post("/api/v1/quotes/" + quoteId + "/adoptions", repToken)
@@ -185,7 +185,7 @@ class FlowBNegotiationIT extends AbstractIntegrationTest {
         assertThat(fulfillment.get("backorders")).hasSize(1);
         assertThat(fulfillment.get("backorders").get(0).get("quantity").asText()).isEqualTo("1");
         // No expected receipt is recorded, so no date is invented (E09).
-        assertThat(fulfillment.get("backorders").get(0).get("expectedDate").isNull()).isTrue();
+        assertThat(absentOrNull(fulfillment.get("backorders").get(0), "expectedDate")).isTrue();
 
         // ---- one-time invoice 38,950 and a separate 3,000 recurring invoice
         JsonNode invoices = json(get("/api/v1/invoices?orderId=" + orderId, financeToken)

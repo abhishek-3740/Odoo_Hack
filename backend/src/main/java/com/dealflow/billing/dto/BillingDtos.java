@@ -1,5 +1,10 @@
 package com.dealflow.billing.dto;
 
+
+import com.dealflow.billing.models.*;
+import com.dealflow.billing.repo.*;
+import com.dealflow.billing.service.*;
+import com.dealflow.billing.controller.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
@@ -37,7 +42,7 @@ public final class BillingDtos {
             @NotNull @Size(max = 40) String method,
             @Size(max = 120) String externalReference,
             @Size(max = 500) String note,
-            @Valid List<PaymentAllocationRequest> allocations) {
+            List<@Valid PaymentAllocationRequest> allocations) {
     }
 
     public record RecordRefundRequest(

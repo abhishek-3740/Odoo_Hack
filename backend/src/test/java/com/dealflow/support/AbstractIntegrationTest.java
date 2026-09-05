@@ -1,30 +1,30 @@
 package com.dealflow.support;
 
-import com.dealflow.auth.Profile;
-import com.dealflow.auth.ProfileRepository;
-import com.dealflow.auth.Role;
-import com.dealflow.catalog.CatalogEnums.CategoryKind;
-import com.dealflow.catalog.CatalogEnums.ChargeKind;
-import com.dealflow.catalog.CatalogEnums.CustomerTier;
-import com.dealflow.catalog.CatalogEnums.FulfillmentKind;
-import com.dealflow.catalog.CatalogEnums.QuantityMode;
-import com.dealflow.catalog.Category;
-import com.dealflow.catalog.CategoryRepository;
-import com.dealflow.catalog.Customer;
-import com.dealflow.catalog.CustomerRepository;
-import com.dealflow.catalog.Product;
-import com.dealflow.catalog.ProductRepository;
-import com.dealflow.catalog.ProductVariant;
-import com.dealflow.catalog.ProductVariantRepository;
-import com.dealflow.catalog.SubscriptionPlan;
-import com.dealflow.catalog.SubscriptionPlanRepository;
-import com.dealflow.fulfillment.StockLevel;
-import com.dealflow.fulfillment.StockLevelRepository;
-import com.dealflow.fulfillment.Warehouse;
-import com.dealflow.fulfillment.WarehouseRepository;
-import com.dealflow.policy.DiscountPolicyDefinition;
-import com.dealflow.policy.DiscountPolicyRepository;
-import com.dealflow.policy.DiscountPolicyService;
+import com.dealflow.auth.models.Profile;
+import com.dealflow.auth.repo.ProfileRepository;
+import com.dealflow.auth.models.Role;
+import com.dealflow.catalog.models.CatalogEnums.CategoryKind;
+import com.dealflow.catalog.models.CatalogEnums.ChargeKind;
+import com.dealflow.catalog.models.CatalogEnums.CustomerTier;
+import com.dealflow.catalog.models.CatalogEnums.FulfillmentKind;
+import com.dealflow.catalog.models.CatalogEnums.QuantityMode;
+import com.dealflow.catalog.models.Category;
+import com.dealflow.catalog.repo.CategoryRepository;
+import com.dealflow.catalog.models.Customer;
+import com.dealflow.catalog.repo.CustomerRepository;
+import com.dealflow.catalog.models.Product;
+import com.dealflow.catalog.repo.ProductRepository;
+import com.dealflow.catalog.models.ProductVariant;
+import com.dealflow.catalog.repo.ProductVariantRepository;
+import com.dealflow.catalog.models.SubscriptionPlan;
+import com.dealflow.catalog.repo.SubscriptionPlanRepository;
+import com.dealflow.fulfillment.models.StockLevel;
+import com.dealflow.fulfillment.repo.StockLevelRepository;
+import com.dealflow.fulfillment.models.Warehouse;
+import com.dealflow.fulfillment.repo.WarehouseRepository;
+import com.dealflow.policy.models.DiscountPolicyDefinition;
+import com.dealflow.policy.repo.DiscountPolicyRepository;
+import com.dealflow.policy.service.DiscountPolicyService;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
@@ -35,6 +35,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -108,6 +109,7 @@ public abstract class AbstractIntegrationTest {
     @BeforeEach
     void setUpClient() {
         http = RestClient.builder()
+                .requestFactory(new SimpleClientHttpRequestFactory())
                 .baseUrl("http://localhost:" + port)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .defaultStatusHandler(status -> true, (request, response) -> { })
@@ -202,6 +204,16 @@ public abstract class AbstractIntegrationTest {
     /** Parses a response body into a JSON tree; the caller asserts on status separately. */
     protected tools.jackson.databind.JsonNode json(String body) {
         return objectMapper.readTree(body == null ? "{}" : body);
+    }
+
+    /**
+     * True when a field is null or not present at all. The API omits null
+     * fields ({@code default-property-inclusion: non_null}), so an absent key
+     * is the normal representation of "no value".
+     */
+    protected static boolean absentOrNull(tools.jackson.databind.JsonNode node, String field) {
+        tools.jackson.databind.JsonNode value = node == null ? null : node.get(field);
+        return value == null || value.isNull();
     }
 
     protected String toJson(Object value) {

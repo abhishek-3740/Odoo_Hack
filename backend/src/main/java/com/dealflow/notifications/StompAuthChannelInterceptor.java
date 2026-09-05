@@ -1,7 +1,7 @@
 package com.dealflow.notifications;
 
-import com.dealflow.auth.ProfileAuthenticationToken;
-import com.dealflow.auth.ProfileJwtAuthenticationConverter;
+import com.dealflow.auth.models.ProfileAuthenticationToken;
+import com.dealflow.auth.service.ProfileJwtAuthenticationConverter;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

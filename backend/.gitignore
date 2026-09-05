@@ -1,91 +1,20 @@
-# ================================
-# Maven
-# ================================
+# Build output
 target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-
-# Maven Wrapper
-.mvn/wrapper/maven-wrapper.properties
-
-# ================================
-# IDE - IntelliJ IDEA
-# ================================
-.idea/
-*.iws
-*.iml
-*.ipr
-out/
-
-# ================================
-# Eclipse
-# ================================
-.classpath
-.project
-.settings/
-.springBeans
-.sts4-cache/
-
-# ================================
-# VS Code
-# ================================
-.vscode/
-*.code-workspace
-
-# ================================
-# NetBeans
-# ================================
-/nbproject/private/
-/nbbuild/
-/dist/
-/.nb-gradle/
-build/
-
-# ================================
-# Java
-# ================================
 *.class
-*.log
-hs_err_pid*
+*.jar
+!.mvn/wrapper/*.jar
 
-# ================================
-# Spring Boot
-# ================================
-.springBeans
-.sts4-cache/
-
-# ================================
-# Environment / Secrets
-# ================================
+# Local configuration and secrets — never commit live values
 .env
 .env.*
 !.env.example
 
-# ================================
-# Application Local Config
-# ================================
-application-local.properties
-application-local.yml
-application-local.yaml
-
-# ================================
-# OS Files
-# ================================
+# IDE and OS noise
+.idea/
+*.iml
+.vscode/
 .DS_Store
 Thumbs.db
-desktop.ini
 
-# ================================
 # Logs
-# ================================
-logs/
 *.log
-
-# ================================
-# Temporary Files
-# ================================
-*.tmp
-*.temp
-*.swp
-*.swo

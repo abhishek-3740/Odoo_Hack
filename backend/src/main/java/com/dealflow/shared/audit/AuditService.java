@@ -1,6 +1,6 @@
 package com.dealflow.shared.audit;
 
-import com.dealflow.auth.Actor;
+import com.dealflow.auth.models.Actor;
 import com.dealflow.shared.time.BusinessClock;
 import com.dealflow.shared.web.RequestContext;
 import java.util.Map;

@@ -1,3 +1,17 @@
 /.claude
 /.workbuddy-ai
-backend\.mvn
+
+# Build output
+**/target/
+
+# Local configuration and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
