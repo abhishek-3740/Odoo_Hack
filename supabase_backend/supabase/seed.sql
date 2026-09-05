@@ -1,0 +1,17 @@
+-- ==============================================================================
+-- Seed data for local development
+-- Runs on `npx supabase db reset` (NOT on `supabase start`)
+-- Replace with data relevant to your hackathon project.
+-- ==============================================================================
+
+-- NOTE: profiles references auth.users, so seeding it requires a real auth user.
+--       Sign up through the app/Studio first, then seed rows that reference it.
+--
+-- Example (uncomment once you have a user id from Studio > Authentication):
+--
+-- insert into public.profiles (id, full_name, email)
+-- values
+--   ('<paste-user-uuid-here>', 'Test User', 'test@example.com');
+--
+-- To reset the DB and apply this seed:
+--   npx supabase db reset

@@ -1,0 +1,15 @@
+{
+  "name": "zito-bc-supabase-backend",
+  "version": "1.0.0",
+  "description": "Local Supabase backend for hackathon project",
+  "scripts": {
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:reset": "supabase db reset",
+    "supabase:migration:new": "supabase migration new"
+  },
+  "devDependencies": {
+    "supabase": "^2.6.0"
+  }
+}
