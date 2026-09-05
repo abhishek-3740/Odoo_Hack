@@ -3,6 +3,7 @@ import { api, formatINR, formatDate, formatDateTime } from '../../../services/ap
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
 import { Modal } from '../../../components/common/Modal';
+import { InvoicePreviewModal } from '../../../components/common/InvoicePreviewModal';
 import {
   Receipt,
   CreditCard,
@@ -15,6 +16,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  Eye,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export function BillingPage() {
@@ -41,6 +45,25 @@ export function BillingPage() {
   const [changePreview, setChangePreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [submittingChange, setSubmittingChange] = useState(false);
+
+  // Invoice Preview & Export State
+  const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
+
+  const handleQuickDownload = async (inv, format = 'pdf') => {
+    try {
+      setDownloadingId(`${inv.id}-${format}`);
+      const ext = format === 'xlsx' ? 'xlsx' : format === 'doc' ? 'doc' : 'pdf';
+      const ref = inv.reference || inv.id.slice(0, 8);
+      await api.download(`/invoices/${inv.id}/export?format=${format}`, `invoice-${ref}.${ext}`);
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download invoice document: ' + err.message);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   // Load Customers first
   useEffect(() => {
@@ -253,7 +276,7 @@ export function BillingPage() {
                   <th className="px-5 py-3.5">Due Date</th>
                   <th className="px-5 py-3.5">Total Amount</th>
                   <th className="px-5 py-3.5">Outstanding Due</th>
-                  <th className="px-5 py-3.5 text-right">Settlement Action</th>
+                  <th className="px-5 py-3.5 text-right">Actions & Settlement</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -288,14 +311,36 @@ export function BillingPage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        {parseFloat(inv.outstanding) > 0 && (
+                        <div className="inline-flex items-center space-x-1.5 justify-end">
                           <button
-                            onClick={() => handleOpenPayment(inv)}
-                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded text-xs transition-colors"
+                            onClick={() => {
+                              setPreviewInvoiceId(inv.id);
+                              setPreviewModalOpen(true);
+                            }}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded text-xs transition-colors"
+                            title="Preview & Export"
                           >
-                            Record Payment &rarr;
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
                           </button>
-                        )}
+                          <button
+                            onClick={() => handleQuickDownload(inv, 'pdf')}
+                            disabled={downloadingId === `${inv.id}-pdf`}
+                            className="inline-flex items-center space-x-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded text-xs transition-colors"
+                            title="Download PDF"
+                          >
+                            <Download className={`w-3.5 h-3.5 ${downloadingId === `${inv.id}-pdf` ? 'animate-bounce' : ''}`} />
+                            <span>PDF</span>
+                          </button>
+                          {parseFloat(inv.outstanding) > 0 && (
+                            <button
+                              onClick={() => handleOpenPayment(inv)}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded text-xs transition-colors"
+                            >
+                              Record Payment &rarr;
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -497,6 +542,15 @@ export function BillingPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Invoice Preview & Download Modal */}
+      <InvoicePreviewModal
+        isOpen={previewModalOpen}
+        onClose={() => setPreviewModalOpen(false)}
+        invoiceId={previewInvoiceId}
+        initialInvoice={invoices.find((i) => i.id === previewInvoiceId)}
+        portalMode={false}
+      />
     </div>
   );
 }

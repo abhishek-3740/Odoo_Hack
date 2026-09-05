@@ -16,10 +16,14 @@ import com.dealflow.portal.dto.PortalAccountDtos.QuoteRequest;
 import com.dealflow.shared.idempotency.IdempotencyService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import com.dealflow.billing.dto.BillingDtos.InvoiceResponse;
 import com.dealflow.shared.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -111,5 +116,43 @@ public class PortalController {
     @GetMapping("/invoices")
     public ApiResponse<List<PortalInvoiceSummary>> invoices(Actor actor) {
         return ApiResponse.of(portalService.listInvoices(actor));
+    }
+
+    @GetMapping("/invoices/{invoiceId}")
+    public ApiResponse<InvoiceResponse> invoice(@PathVariable UUID invoiceId, Actor actor) {
+        return ApiResponse.of(portalService.getInvoice(invoiceId, actor));
+    }
+
+    @GetMapping("/invoices/{invoiceId}/export")
+    public ResponseEntity<byte[]> exportInvoice(@PathVariable UUID invoiceId,
+                                                @RequestParam(defaultValue = "pdf") String format,
+                                                Actor actor) {
+        InvoiceResponse invoice = portalService.getInvoice(invoiceId, actor);
+        byte[] bytes = portalService.exportInvoice(invoiceId, format, actor);
+        String fmt = format == null ? "pdf" : format.trim().toLowerCase();
+        MediaType mediaType;
+        String extension;
+        switch (fmt) {
+            case "xlsx", "excel" -> {
+                mediaType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                extension = "xlsx";
+            }
+            case "doc", "docx", "word" -> {
+                mediaType = MediaType.parseMediaType("application/msword");
+                extension = "doc";
+            }
+            default -> {
+                mediaType = MediaType.APPLICATION_PDF;
+                extension = "pdf";
+            }
+        }
+        String ref = invoice.reference() != null ? invoice.reference() : invoice.id().toString();
+        String filename = "invoice-" + ref + "." + extension;
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                .body(bytes);
     }
 }
