@@ -28,6 +28,33 @@ async function setup(request) {
   return { tokens, rep, quote };
 }
 
+test('customer quotation request is adopted, exposes final acceptance and updates salesperson live', async ({ page, request, browser }) => {
+  const { tokens, rep, quote } = await setup(request);
+  const buyer = tokens['alpha@customer.demo'];
+  const requested = await call(request, buyer, '/portal/quote-requests', {
+    title: `Adoption regression ${Date.now()}`,
+    lines: [{ variantId: quote.lines[0].variantId, quantity: 1 }],
+  });
+  await login(page, rep, `/admin/sales/quotes/${requested.id}`);
+  await expect(page.getByRole('button', { name: 'Already submitted', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Adopt these terms', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Next workflow step' })).toContainText('Customer:');
+  const buyerContext = await browser.newContext({ baseURL: process.env.UI_TEST_URL || 'http://127.0.0.1:3000' });
+  try {
+    const buyerPage = await buyerContext.newPage();
+    await login(buyerPage, buyer, `/customer/quotes/${requested.id}`);
+    await buyerPage.getByRole('button', { name: 'Accept & confirm', exact: true }).click();
+    await buyerPage.getByRole('button', { name: 'I accept & sign', exact: true }).click();
+    await expect(buyerPage.getByText('Agreement confirmed', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Next workflow step' })).toContainText('Order confirmed', { timeout: 20000 });
+    const current = await call(request, rep, `/quotes/${requested.id}`);
+    expect(current.gates.orderExists).toBe(true);
+    expect(current.gates.customerAccepted).toBe(true);
+    expect(current.gates.sellerAdopted).toBe(true);
+    expect(current.gates.approvalCleared).toBe(true);
+  } finally { await buyerContext.close(); }
+});
+
 test('upgrade, review routing and finance resolution use the real backend', async ({ page, request }) => {
   const { tokens, rep, quote } = await setup(request);
   const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));

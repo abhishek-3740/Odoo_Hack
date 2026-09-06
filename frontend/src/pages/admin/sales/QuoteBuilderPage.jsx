@@ -359,12 +359,11 @@ export function QuoteBuilderPage() {
     );
   }
 
-  if (error) return <section className="panel empty-state"><h1>Quotation could not load</h1><p role="alert">{error}</p><button className="button-primary" onClick={loadQuoteEvaluation}>Try again</button></section>;
+  if (error) return <section className="panel empty-state"><h1>Quotation could not load</h1><p role="alert">{error}</p><button className="button-primary" onClick={() => loadQuoteEvaluation()}>Try again</button></section>;
 
   const canEdit = (user?.role === 'ADMIN' || user?.profileId === evaluation?.ownerProfileId) && !evaluation?.gates?.orderExists && !['CONFIRMED', 'CANCELED', 'LOST', 'EXPIRED'].includes(evaluation?.stage);
   // The backend names this source CUSTOMER_COUNTER. When it is current, the
   // terms on screen are literally the customer's proposal, not ours.
-  const isCustomerProposal = evaluation?.revisionSource === 'CUSTOMER_COUNTER';
   const awaitingAdoption = evaluation?.revisionStatus === 'SUBMITTED' && !evaluation?.gates?.sellerAdopted && !evaluation?.gates?.orderExists;
   const totals = evaluation?.totals || {};
   const risk = evaluation?.risk || {};
@@ -471,6 +470,7 @@ export function QuoteBuilderPage() {
           <p className="text-sm text-slate-700">
             {gates.orderExists ? 'Order confirmed. Fulfillment and invoicing can proceed.'
               : !gates.sellerAdopted ? 'Salesperson: adopt these terms below, or edit and save a revised offer.'
+              : ['REVIEW', 'UNDER_NEGOTIATION'].includes(evaluation.stage) && !gates.customerAccepted ? 'Salesperson: use Share Customer Portal to make these submitted terms available for customer acceptance. Do not submit this version again.'
               : !gates.approvalCleared ? `Waiting for ${gates.approvalStatus === 'PENDING_FINANCE' ? 'finance' : 'manager'} approval. The customer can also accept the shared terms while approval is pending.`
               : !gates.customerAccepted ? 'Customer: open the shared quotation and accept this exact version. The order is created automatically when all three gates clear.'
               : gates.blockingReasons?.join(' ') || 'All decisions recorded. Refresh to check order confirmation.'}
