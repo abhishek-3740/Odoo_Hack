@@ -1,3 +1,8 @@
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
+# Claude / Workbuddy
 /.claude
 /.workbuddy-ai
 

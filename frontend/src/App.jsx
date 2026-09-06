@@ -16,6 +16,11 @@ const PolicyEditor = lazy(() => import('./pages/admin/system/PolicyEditor').then
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
 const SignupPage = lazy(() => import('./pages/auth/SignupPage').then(m => ({ default: m.SignupPage })));
 const StaffSignupPage = lazy(() => import('./pages/auth/StaffSignupPage').then(m => ({ default: m.StaffSignupPage })));
+import { LandingPage } from './pages/landing/LandingPage';
+import { HomePage } from './pages/public/HomePage';
+import { LoginPage } from './pages/auth/LoginPage';
+import { SignupPage } from './pages/auth/SignupPage';
+import { StaffSignupPage } from './pages/auth/StaffSignupPage';
 
 // Customer Pages
 const CustomerDashboardPage = lazy(() => import('./pages/customer/CustomerDashboardPage').then(m => ({ default: m.CustomerDashboardPage })));
