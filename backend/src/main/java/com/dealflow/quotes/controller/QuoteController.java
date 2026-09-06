@@ -7,6 +7,7 @@ import com.dealflow.quotes.service.*;
 import com.dealflow.quotes.dto.*;
 import com.dealflow.auth.models.Actor;
 import com.dealflow.auth.models.Profile;
+import com.dealflow.auth.models.Role;
 import com.dealflow.auth.repo.ProfileRepository;
 import com.dealflow.catalog.models.Customer;
 import com.dealflow.catalog.repo.CustomerRepository;
@@ -93,13 +94,10 @@ public class QuoteController {
         if (actor.isCustomer()) {
             throw ApiException.forbidden("Use the portal endpoints.");
         }
-        // Scope is forced server-side: a rep's list is their own quotations
-        // whatever ownerProfileId they pass; a manager's is their team's.
-        UUID owner = switch (actor.role()) {
-            case REP -> actor.profileId();
-            default -> ownerProfileId;
-        };
-        UUID team = actor.role() == com.dealflow.auth.models.Role.MANAGER ? actor.teamId() : null;
+        // A rep with no explicit owner filter views their team's quotes (or all desk quotes if unassigned);
+        // an explicit owner filter always wins. A manager's default scope is their team.
+        UUID owner = ownerProfileId;
+        UUID team = (actor.role() == Role.REP || actor.role() == Role.MANAGER) ? actor.teamId() : null;
         Stage stageFilter = parseStage(stage);
 
         Page<Quote> result = quotes.search(owner, team, customerId, stageFilter,

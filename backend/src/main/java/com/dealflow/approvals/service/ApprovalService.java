@@ -21,6 +21,7 @@ import com.dealflow.quotes.models.Quote;
 import com.dealflow.quotes.models.QuoteEnums.ApprovalRequestStatus;
 import com.dealflow.quotes.models.QuoteEnums.ApprovalStatus;
 import com.dealflow.quotes.models.QuoteEnums.RevisionStatus;
+import com.dealflow.quotes.models.QuoteEnums.Stage;
 import com.dealflow.quotes.service.QuoteGateListener;
 import com.dealflow.quotes.repo.QuoteRepository;
 import com.dealflow.quotes.models.QuoteRevision;
@@ -131,9 +132,19 @@ public class ApprovalService {
         outbox.publish(OutboxWriter.Events.APPROVAL_UPDATED, "Quote", quote.getId(),
                 quote.getRowVersion(),
                 Map.of("revisionId", revision.getId().toString(),
-                        "approvalStatus", revision.getApprovalStatus().name()),
+                        "approvalStatus", revision.getApprovalStatus().name(),
+                        "stage", quote.getStage().name()),
                 OutboxWriter.RecipientScope.deal(quote.getCustomerId(), quote.getOwnerProfileId(),
                         quote.getTeamId()).andRoles(Role.MANAGER.name(), Role.FINANCE.name()));
+
+        if (quote.getStage() == Stage.SENT) {
+            outbox.publish(OutboxWriter.Events.QUOTE_REVISED, "Quote", quote.getId(),
+                    quote.getRowVersion(),
+                    Map.of("revisionId", revision.getId().toString(),
+                            "stage", quote.getStage().name()),
+                    OutboxWriter.RecipientScope.deal(quote.getCustomerId(), quote.getOwnerProfileId(),
+                            quote.getTeamId()).andRoles(Role.MANAGER.name(), Role.FINANCE.name()));
+        }
 
         UUID orderId = null;
         String finalizationStatus = null;
@@ -310,11 +321,25 @@ public class ApprovalService {
                     revision.setApprovalStatus(ApprovalStatus.PENDING_FINANCE);
                 } else {
                     revision.setApprovalStatus(ApprovalStatus.APPROVED);
+                    if (quote.getStage() == Stage.REVIEW || quote.getStage() == Stage.DRAFT) {
+                        quote.setStage(Stage.SENT);
+                    }
+                    if (revision.getSellerAdoptedAt() == null) {
+                        revision.recordSellerAdoption(actor.profileId(), now);
+                    }
+                    if (revision.getStatus() != RevisionStatus.SUBMITTED) {
+                        revision.markSubmitted(now);
+                    }
+                    quotes.save(quote);
+                    revisions.save(revision);
                 }
             }
             case REJECT -> {
                 step.decide(ApprovalRequestStatus.REJECTED, actor.profileId(), now, request.reason());
                 revision.setApprovalStatus(ApprovalStatus.REJECTED);
+                quote.setStage(Stage.CANCELED);
+                quotes.save(quote);
+                revisions.save(revision);
                 supersedeLaterSteps(revision, step, actor, "An earlier step rejected this version.");
             }
             case RETURN_FOR_REVISION -> {
@@ -323,6 +348,9 @@ public class ApprovalService {
                 step.decide(ApprovalRequestStatus.REVISION_REQUIRED, actor.profileId(), now,
                         request.reason());
                 revision.setApprovalStatus(ApprovalStatus.REVISION_REQUIRED);
+                quote.setStage(Stage.DRAFT);
+                quotes.save(quote);
+                revisions.save(revision);
                 supersedeLaterSteps(revision, step, actor, "The version was returned for revision.");
             }
         }

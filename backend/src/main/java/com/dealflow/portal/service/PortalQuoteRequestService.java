@@ -25,6 +25,8 @@ import com.dealflow.quotes.models.RiskModel.ApprovalLevel;
 import com.dealflow.quotes.repo.QuoteLineRepository;
 import com.dealflow.quotes.repo.QuoteRepository;
 import com.dealflow.quotes.repo.QuoteRevisionRepository;
+import com.dealflow.approvals.service.ApprovalRoutingService;
+import com.dealflow.quotes.models.CommercialHash;
 import com.dealflow.quotes.service.QuoteEvaluationService;
 import com.dealflow.quotes.service.QuoteLineFactory;
 import com.dealflow.shared.audit.AuditService;
@@ -61,6 +63,7 @@ public class PortalQuoteRequestService {
     private final ProfileRepository profiles;
     private final QuoteEvaluationService evaluationService;
     private final PortalService portalService;
+    private final ApprovalRoutingService approvalRouting;
     private final AuditService audit;
     private final OutboxWriter outbox;
     private final BusinessClock clock;
@@ -70,6 +73,7 @@ public class PortalQuoteRequestService {
                                      QuoteLineRepository quoteLines, NegotiationRequestRepository negotiations,
                                      CustomerRepository customers, ProfileRepository profiles,
                                      QuoteEvaluationService evaluationService, PortalService portalService,
+                                     ApprovalRoutingService approvalRouting,
                                      AuditService audit, OutboxWriter outbox, BusinessClock clock,
                                      ObjectMapper objectMapper) {
         this.quotes = quotes;
@@ -80,6 +84,7 @@ public class PortalQuoteRequestService {
         this.profiles = profiles;
         this.evaluationService = evaluationService;
         this.portalService = portalService;
+        this.approvalRouting = approvalRouting;
         this.audit = audit;
         this.outbox = outbox;
         this.clock = clock;
@@ -134,8 +139,21 @@ public class PortalQuoteRequestService {
                 pricing.recurringFirstCycleNetMinor(), pricing.recurringFirstCycleTaxMinor(),
                 pricing.recurringFirstCycleCostMinor(), pricing.contributionMinor(),
                 pricing.contributionPercent(), pricing.totalBaseMinor(), pricing.totalDiscountMinor());
-        revision.setApprovalStatus(ApprovalStatus.NOT_EVALUATED);
-        revision.setRequiredLevel(ApprovalLevel.NONE);
+        revision.setPolicyVersionNo(evaluation.policyVersionNo());
+        revision.setPolicySnapshot(evaluation.policyJson());
+        revision.setRiskResult(objectMapper.writeValueAsString(evaluation.risk()));
+        revision.setCommercialHash(CommercialHash.of(revision, rows));
+        revision.markSubmitted(now);
+        revision.recordSellerAdoption(owner.getId(), now);
+
+        ApprovalLevel required = evaluation.risk().requiredLevel();
+        approvalRouting.createChain(quote, revision, required,
+                objectMapper.writeValueAsString(evaluation.risk().reasons()), now);
+
+        quote.setStage(Stage.REVIEW);
+        quote.setCurrentRevisionId(revision.getId());
+        quotes.save(quote);
+        revisions.save(revision);
 
         // The customer's note opens the discussion trail on the deal room.
         NegotiationRequest opener = new NegotiationRequest(quote.getId(), revision.getId(),

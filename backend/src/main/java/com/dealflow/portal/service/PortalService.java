@@ -357,6 +357,10 @@ public class PortalService {
         Instant now = clock.now();
         if (current.getCustomerAcceptedAt() == null) {
             current.recordCustomerAcceptance(actor.profileId(), now, currentHash);
+            if (current.getSellerAdoptedAt() == null && current.getApprovalStatus().clearsApprovalGate()) {
+                current.recordSellerAdoption(quote.getOwnerProfileId(), now);
+            }
+            revisions.save(current);
             quote.recordProgress(now);
 
             audit.record(actor, "PORTAL_ACCEPTED", "QuoteRevision", current.getId())
@@ -603,6 +607,7 @@ public class PortalService {
         boolean expired = quote.isExpiredOn(clock.businessToday());
         boolean awaitingApproval = !revision.getApprovalStatus().clearsApprovalGate();
         boolean acceptable = order.isEmpty() && quote.getStage().isOpen() && !expired
+                && quote.getStage() == Stage.SENT
                 && revision.getStatus() == RevisionStatus.SUBMITTED
                 && revision.getCustomerAcceptedAt() == null;
 
