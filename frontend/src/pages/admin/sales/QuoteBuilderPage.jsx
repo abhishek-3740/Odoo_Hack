@@ -29,6 +29,7 @@ import {
 import { RecommendationPanel } from '../../../components/recommendations/RecommendationPanel';
 import { NegotiationDesk } from '../../../components/customer/NegotiationDesk';
 import { useAuth } from '../../../context/AuthContext';
+import { useDealEvents } from '../../../hooks/useDealEvents';
 
 export function QuoteBuilderPage() {
   const { id } = useParams();
@@ -69,6 +70,9 @@ export function QuoteBuilderPage() {
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submitNote, setSubmitNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const refreshSequence = useRef(0);
+  const editingRef = useRef(false);
+  editingRef.current = dirty || saving || evaluating || adopting || submitting;
 
   // Share Modal
   const [shareResult, setShareResult] = useState(null);
@@ -98,10 +102,13 @@ export function QuoteBuilderPage() {
   }, []);
 
   // Initial load of quote
-  const loadQuoteEvaluation = async () => {
+  const loadQuoteEvaluation = async (silent = false) => {
+    if (silent && editingRef.current) return;
+    const sequence = ++refreshSequence.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const evalRes = await api.get(`/quotes/${id}`);
+      if (sequence !== refreshSequence.current || (silent && editingRef.current)) return;
       setEvaluation(evalRes);
       setDirty(false);
       setError(null);
@@ -126,15 +133,21 @@ export function QuoteBuilderPage() {
       }
     } catch (err) {
       console.error('Failed to load quote evaluation:', err);
-      setError(err.message || 'Quotation not found');
+      if (silent) setActionError('Could not refresh workflow: ' + err.message);
+      else setError(err.message || 'Quotation not found');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadQuoteEvaluation();
   }, [id]);
+
+  useDealEvents(
+    event => event.entityId === id,
+    () => loadQuoteEvaluation(true)
+  );
 
   // Real-time evaluation recalculation when lines or discount change
   const triggerReEvaluation = async (linesToEval = draftLines, discountBp = orderDiscountBp) => {
@@ -352,7 +365,7 @@ export function QuoteBuilderPage() {
   // The backend names this source CUSTOMER_COUNTER. When it is current, the
   // terms on screen are literally the customer's proposal, not ours.
   const isCustomerProposal = evaluation?.revisionSource === 'CUSTOMER_COUNTER';
-  const awaitingAdoption = isCustomerProposal && !evaluation?.gates?.sellerAdopted && !evaluation?.gates?.orderExists;
+  const awaitingAdoption = evaluation?.revisionStatus === 'SUBMITTED' && !evaluation?.gates?.sellerAdopted && !evaluation?.gates?.orderExists;
   const totals = evaluation?.totals || {};
   const risk = evaluation?.risk || {};
   const stockPreview = evaluation?.stockPreview || [];
@@ -429,16 +442,16 @@ export function QuoteBuilderPage() {
 
           <button
             onClick={() => setSubmitModalOpen(true)}
-            disabled={!canEdit || dirty || saving || evaluating}
+            disabled={!canEdit || evaluation?.revisionStatus !== 'DRAFT' || dirty || saving || evaluating}
             className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Submit for Approval</span>
+            <span>{evaluation?.revisionStatus === 'SUBMITTED' ? 'Already submitted' : 'Submit for Approval'}</span>
           </button>
 
           <button
             onClick={handleShareQuote}
-            disabled={!canEdit || dirty || saving || evaluating}
+            disabled={!canEdit || evaluation?.revisionStatus !== 'SUBMITTED' || dirty || saving || evaluating}
             className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
           >
             <Share2 className="w-3.5 h-3.5" />
@@ -449,6 +462,24 @@ export function QuoteBuilderPage() {
       </div>
 
       {/* What the customer proposed, and what it does to the deal */}
+      {evaluation?.revisionStatus === 'SUBMITTED' && (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2" aria-label="Next workflow step">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold">Next workflow step</h2>
+            <button type="button" className="text-xs font-semibold text-blue-700" disabled={dirty || saving || evaluating || adopting || submitting} onClick={() => loadQuoteEvaluation(true)}>Refresh status</button>
+          </div>
+          <p className="text-sm text-slate-700">
+            {gates.orderExists ? 'Order confirmed. Fulfillment and invoicing can proceed.'
+              : !gates.sellerAdopted ? 'Salesperson: adopt these terms below, or edit and save a revised offer.'
+              : !gates.approvalCleared ? `Waiting for ${gates.approvalStatus === 'PENDING_FINANCE' ? 'finance' : 'manager'} approval. The customer can also accept the shared terms while approval is pending.`
+              : !gates.customerAccepted ? 'Customer: open the shared quotation and accept this exact version. The order is created automatically when all three gates clear.'
+              : gates.blockingReasons?.join(' ') || 'All decisions recorded. Refresh to check order confirmation.'}
+          </p>
+          {evaluation.approvals?.length > 0 && <ol className="flex flex-wrap gap-3 text-xs text-slate-600" aria-label="Approval route">
+            {evaluation.approvals.map(step => <li key={step.id}>{step.step}. {step.requiredRole}: {step.status}</li>)}
+          </ol>}
+        </section>
+      )}
       {awaitingAdoption && (
         <section
           aria-labelledby="counteroffer-heading"
@@ -462,7 +493,7 @@ export function QuoteBuilderPage() {
                   The customer proposed these terms
                 </h2>
                 <p className="text-xs text-amber-800 mt-0.5">
-                  Revision #{evaluation?.revisionNo} is the customer&apos;s counteroffer. It is already priced and
+                  Revision #{evaluation?.revisionNo} contains the proposed terms. It is already priced and
                   routed. Adopt it to agree, or edit the lines and save a revision to counter back.
                 </p>
               </div>

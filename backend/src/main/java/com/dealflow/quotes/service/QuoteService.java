@@ -389,7 +389,7 @@ public class QuoteService {
                         quote.getTeamId()));
 
         return new ShareResponse(quote.getId(), quote.getStage().name(),
-                "/portal/quotes/" + quote.getId(), revision.getCommercialHash());
+                "/customer/quotes/" + quote.getId(), revision.getCommercialHash());
     }
 
     // ------------------------------------------------------------- adoption
@@ -446,6 +446,16 @@ public class QuoteService {
                             quote.getOwnerProfileId(), quote.getTeamId()));
         }
 
+        // Adoption exposes the exact submitted terms for customer acceptance.
+        // Approval remains an independent gate and may still be pending.
+        if (quote.getStage() == Stage.REVIEW || quote.getStage() == Stage.UNDER_NEGOTIATION) {
+            quote.setStage(Stage.SENT);
+            quote.beginAwaitingExternal(now);
+            outbox.publish(OutboxWriter.Events.QUOTE_REVISED, "Quote", quote.getId(),
+                    quote.getRowVersion(), Map.of("stage", quote.getStage().name()),
+                    OutboxWriter.RecipientScope.deal(quote.getCustomerId(),
+                            quote.getOwnerProfileId(), quote.getTeamId()));
+        }
         gateListener.onGatesPossiblyCleared(quote.getId(), actor);
         quotes.flush();
         return renderCurrent(quote);

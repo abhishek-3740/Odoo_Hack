@@ -165,8 +165,13 @@ class FlowBNegotiationIT extends AbstractIntegrationTest {
                 .retrieve().toEntity(String.class);
         assertThat(adopted.getStatusCode().value()).as(adopted.getBody()).isEqualTo(200);
         assertThat(json(adopted.getBody()).get("data").get("gates").get("orderExists").asBoolean()).isFalse();
+        assertThat(json(adopted.getBody()).path("data").path("stage").asText()).isEqualTo("SENT");
 
         assertThat(decide(chain2.get(0).getId(), managerToken, "APPROVE").getStatusCode().value()).isEqualTo(200);
+        JsonNode awaitingFinance = json(get("/api/v1/quotes/" + quoteId, repToken)
+                .retrieve().toEntity(String.class).getBody()).path("data");
+        assertThat(awaitingFinance.path("gates").path("approvalStatus").asText()).isEqualTo("PENDING_FINANCE");
+        assertThat(awaitingFinance.path("gates").path("orderExists").asBoolean()).isFalse();
         JsonNode finalDecision = json(decide(chain2.get(1).getId(), financeToken, "APPROVE").getBody()).get("data");
         assertThat(finalDecision.get("finalizationStatus").asText()).isEqualTo("FINALIZED");
         UUID orderId = UUID.fromString(finalDecision.get("orderId").asText());

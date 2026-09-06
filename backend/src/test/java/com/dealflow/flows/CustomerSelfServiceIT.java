@@ -130,6 +130,8 @@ class CustomerSelfServiceIT extends AbstractIntegrationTest {
         JsonNode internal = json(get("/api/v1/quotes/" + quoteId, repToken).retrieve().toEntity(String.class)
                 .getBody()).path("data");
         assertThat(internal.path("stage").asText()).isEqualTo("REVIEW");
+        assertThat(internal.path("revisionSource").asText()).isEqualTo("CUSTOMER_COUNTER");
+        assertThat(internal.path("gates").path("sellerAdopted").asBoolean()).isFalse();
 
         JsonNode requests = json(get("/api/v1/quotes/" + quoteId + "/requests", repToken).retrieve()
                 .toEntity(String.class).getBody()).path("data");
@@ -150,6 +152,22 @@ class CustomerSelfServiceIT extends AbstractIntegrationTest {
         JsonNode after = json(get("/api/v1/portal/quotes/" + quoteId, token).retrieve().toEntity(String.class)
                 .getBody()).path("data");
         assertThat(after.path("activity").get(0).path("responseMessage").asText()).contains("pricing this now");
+
+        var adopted = post("/api/v1/quotes/" + quoteId + "/adoptions", repToken)
+                .body(map("revisionId", internal.path("revisionId").asText()))
+                .retrieve().toEntity(String.class);
+        assertThat(adopted.getStatusCode().value()).as(adopted.getBody()).isEqualTo(200);
+        JsonNode available = json(get("/api/v1/portal/quotes/" + quoteId, token)
+                .retrieve().toEntity(String.class).getBody()).path("data");
+        assertThat(available.path("acceptable").asBoolean()).isTrue();
+        var accepted = post("/api/v1/portal/quotes/" + quoteId + "/acceptances", token)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .body(map("revisionId", available.path("revisionId").asText(),
+                        "commercialHash", available.path("commercialHash").asText()))
+                .retrieve().toEntity(String.class);
+        assertThat(accepted.getStatusCode().value()).as(accepted.getBody()).isEqualTo(200);
+        assertThat(json(accepted.getBody()).path("data").path("conditional").asBoolean()).isFalse();
+        assertThat(json(accepted.getBody()).path("data").path("orderReference").asText()).isNotBlank();
 
         // ---- account and settings --------------------------------------------
         // Use the blocking Apache transport for PATCH, including Windows hosts

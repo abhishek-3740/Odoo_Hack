@@ -44,11 +44,10 @@ public class QuoteAccessPolicy {
         }
     }
 
-    /** Commercial edits: the owning rep, their team, or an administrator. */
+    /** Commercial edits: the owning rep or an administrator. */
     public void requireEdit(Actor actor, Quote quote) {
         requireRead(actor, quote);
-        boolean allowed = actor.isAdmin() || isOwner(actor, quote)
-                || actor.teamId() == null || Objects.equals(actor.teamId(), quote.getTeamId());
+        boolean allowed = actor.isAdmin() || isOwner(actor, quote);
         if (!allowed) {
             throw ApiException.forbidden("Only the rep who owns this quotation can change its terms.");
         }
@@ -61,19 +60,14 @@ public class QuoteAccessPolicy {
 
     /** Seller adoption of a customer's proposed terms. */
     public void requireAdopt(Actor actor, Quote quote) {
-        requireRead(actor, quote);
-        boolean allowed = actor.isAdmin() || isOwner(actor, quote)
-                || actor.teamId() == null || Objects.equals(actor.teamId(), quote.getTeamId());
-        if (!allowed) {
-            throw ApiException.forbidden("Only the rep who owns this quotation can adopt proposed terms.");
-        }
+        requireEdit(actor, quote);
     }
 
     public boolean canRead(Actor actor, Quote quote) {
         return switch (actor.role()) {
             case ADMIN, FINANCE -> true;
             case MANAGER -> actor.teamId() == null || Objects.equals(actor.teamId(), quote.getTeamId());
-            case REP -> isOwner(actor, quote) || actor.teamId() == null || Objects.equals(actor.teamId(), quote.getTeamId()) || quote.getOwnerProfileId() == null;
+            case REP -> isOwner(actor, quote);
             case CUSTOMER -> false;
         };
     }

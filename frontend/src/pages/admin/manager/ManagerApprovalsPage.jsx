@@ -22,6 +22,7 @@ export function ManagerApprovalsPage() {
   const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDING');
 
   // Decision Modal State
@@ -40,11 +41,13 @@ export function ManagerApprovalsPage() {
   const loadApprovals = useCallback(async () => {
     try {
       setRefreshing(true);
-      const res = await api.get(`/approval-requests?status=${statusFilter}`);
+      setLoadError('');
+      const res = await api.get(`/approval-requests?status=${statusFilter}&pageSize=100`);
       const list = res?.items || res?.content || (Array.isArray(res) ? res : []);
       setApprovals(list);
     } catch (err) {
       console.error('Failed to load approval requests:', err);
+      setLoadError('Could not load manager approvals: ' + err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -120,6 +123,7 @@ export function ManagerApprovalsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {loadError && <p role="alert" className="error-notice">{loadError}</p>}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

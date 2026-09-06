@@ -324,9 +324,6 @@ public class ApprovalService {
                     if (quote.getStage() == Stage.REVIEW || quote.getStage() == Stage.DRAFT) {
                         quote.setStage(Stage.SENT);
                     }
-                    if (revision.getSellerAdoptedAt() == null) {
-                        revision.recordSellerAdoption(actor.profileId(), now);
-                    }
                     if (revision.getStatus() != RevisionStatus.SUBMITTED) {
                         revision.markSubmitted(now);
                     }

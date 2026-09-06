@@ -123,7 +123,7 @@ public class PortalQuoteRequestService {
         quotes.save(quote);
 
         QuoteRevision revision = new QuoteRevision(quote.getId(), quote.nextRevisionNo(),
-                RevisionSource.SELLER, customer.getCurrency(), owner.getId());
+                RevisionSource.CUSTOMER_COUNTER, customer.getCurrency(), actor.profileId());
         revision.setBackorderTerms(evaluationService.defaultBackorderTerms());
         revisions.save(revision);
         quote.setCurrentRevisionId(revision.getId());
@@ -144,7 +144,6 @@ public class PortalQuoteRequestService {
         revision.setRiskResult(objectMapper.writeValueAsString(evaluation.risk()));
         revision.setCommercialHash(CommercialHash.of(revision, rows));
         revision.markSubmitted(now);
-        revision.recordSellerAdoption(owner.getId(), now);
 
         ApprovalLevel required = evaluation.risk().requiredLevel();
         approvalRouting.createChain(quote, revision, required,
@@ -161,6 +160,7 @@ public class PortalQuoteRequestService {
         String note = request.note() == null || request.note().isBlank()
                 ? "Quotation requested from the catalogue." : request.note().trim();
         opener.setMessage(note);
+        opener.setCandidateRevisionId(revision.getId());
         opener.setPayload(objectMapper.writeValueAsString(Map.of("message", note, "origin", "CATALOGUE")));
         negotiations.save(opener);
         quote.recordProgress(now);

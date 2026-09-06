@@ -119,6 +119,10 @@ class OrderLevelCounterofferIT extends AbstractIntegrationTest {
                 .retrieve().toEntity(String.class);
         assertThat(adopted.getStatusCode().value()).as(adopted.getBody()).isEqualTo(200);
         assertThat(json(adopted.getBody()).get("data").get("gates").get("sellerAdopted").asBoolean()).isTrue();
+        assertThat(json(adopted.getBody()).path("data").path("stage").asText()).isEqualTo("SENT");
+        JsonNode portalAfterAdoption = json(get("/api/v1/portal/quotes/" + quoteId, buyerToken)
+                .retrieve().toEntity(String.class).getBody()).path("data");
+        assertThat(portalAfterAdoption.path("acceptable").asBoolean()).isTrue();
 
         JsonNode afterAdoption = json(get("/api/v1/quotes/" + quoteId + "/requests", repToken)
                 .retrieve().toEntity(String.class).getBody()).get("data").get(0);

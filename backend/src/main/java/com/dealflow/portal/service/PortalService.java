@@ -357,9 +357,6 @@ public class PortalService {
         Instant now = clock.now();
         if (current.getCustomerAcceptedAt() == null) {
             current.recordCustomerAcceptance(actor.profileId(), now, currentHash);
-            if (current.getSellerAdoptedAt() == null && current.getApprovalStatus().clearsApprovalGate()) {
-                current.recordSellerAdoption(quote.getOwnerProfileId(), now);
-            }
             revisions.save(current);
             quote.recordProgress(now);
 

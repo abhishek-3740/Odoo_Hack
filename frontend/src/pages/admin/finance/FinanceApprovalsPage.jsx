@@ -27,16 +27,19 @@ export function FinanceApprovalsPage() {
   const [decisionType, setDecisionType] = useState('APPROVE');
   const [decisionReason, setDecisionReason] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const loadApprovals = useCallback(async () => {
     try {
       setRefreshing(true);
-      const res = await api.get(`/approval-requests?status=${statusFilter}`);
+      setLoadError('');
+      const res = await api.get(`/approval-requests?status=${statusFilter}&pageSize=100`);
       const list = res?.items || res?.content || (Array.isArray(res) ? res : []);
       // Filter for Step 2 or Finance
       setApprovals(list.filter((x) => x.step === 2 || x.requiredRole === 'FINANCE'));
     } catch (err) {
       console.error('Failed to load finance approvals:', err);
+      setLoadError('Could not load finance approvals: ' + err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -93,6 +96,7 @@ export function FinanceApprovalsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {loadError && <p role="alert" className="error-notice">{loadError}</p>}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
@@ -178,19 +182,23 @@ export function FinanceApprovalsPage() {
                     <td className="px-5 py-3.5 text-right space-x-1.5">
                       {item.status === 'PENDING' && (
                         <>
+                          {!item.actionable && <span className="text-xs text-amber-800">{item.blockedReason || 'Waiting for manager approval'}</span>}
                           <button
+                            disabled={!item.actionable}
                             onClick={() => handleOpenDecision(item, 'APPROVE')}
                             className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded text-xs transition-colors"
                           >
                             Approve Deal
                           </button>
                           <button
+                            disabled={!item.actionable}
                             onClick={() => handleOpenDecision(item, 'RETURN_FOR_REVISION')}
                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold rounded text-xs transition-colors"
                           >
                             Return
                           </button>
                           <button
+                            disabled={!item.actionable}
                             onClick={() => handleOpenDecision(item, 'REJECT')}
                             className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded text-xs transition-colors"
                           >
