@@ -43,6 +43,38 @@ class BillingLifecycleIT extends AbstractIntegrationTest {
     @Autowired
     BusinessClock clock;
 
+    @Autowired
+    com.dealflow.catalog.repo.SubscriptionPlanRepository planRepository;
+
+    @Test
+    void intervalPlanSwitchCreditsOldCoverageChargesNewPeriodAndReplaysExactly() {
+        Live live = liveSubscription("10");
+        var sub = subscriptions.findById(live.subscriptionId).orElseThrow();
+        var old = planRepository.findById(sub.getPlanId()).orElseThrow();
+        var annual = planRepository.save(new SubscriptionPlan(old.getProductId(),"YEAR-"+suffix(),"Annual Support",12,300_000L,120_000L));
+        String path="/api/v1/subscriptions/"+sub.getId();
+        String token=tokenFor(live.finance);
+        var previewResponse=post(path+"/plan-change-previews",token).body(map("newPlanId",annual.getId())).retrieve().toEntity(String.class);
+        assertThat(previewResponse.getStatusCode().value()).isEqualTo(200);
+        var preview=json(previewResponse.getBody()).path("data");
+        assertThat(preview.path("oldCreditNet").asText()).isEqualTo("3000.00");
+        assertThat(preview.path("newChargeNet").asText()).isEqualTo("30000.00");
+        assertThat(preview.path("coverageEnd").asText()).isEqualTo(clock.businessToday().plusMonths(12).toString());
+        var body=map("newPlanId",annual.getId(),"expectedRowVersion",preview.path("rowVersion").asLong());
+        String key="switch-"+suffix();
+        var applied=post(path+"/plan-changes",token).header("Idempotency-Key",key).body(body).retrieve().toEntity(String.class);
+        assertThat(applied.getStatusCode().value()).as(applied.getBody()).isEqualTo(200);
+        var replay=post(path+"/plan-changes",token).header("Idempotency-Key",key).body(body).retrieve().toEntity(String.class);
+        assertThat(json(replay.getBody()).path("data")).isEqualTo(json(applied.getBody()).path("data"));
+        assertThat(post(path+"/plan-changes",token).header("Idempotency-Key",key).body(map("newPlanId",old.getId(),"expectedRowVersion",preview.path("rowVersion").asLong())).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(409);
+        var switched=subscriptions.findById(sub.getId()).orElseThrow();
+        assertThat(switched.getIntervalMonths()).isEqualTo(12);
+        assertThat(switched.getNextBillAt()).isEqualTo(clock.businessToday().plusMonths(12));
+        var canceled=post(path+"/cancellations",token).header("Idempotency-Key","cancel-"+suffix()).body(map("policy","IMMEDIATE_PRORATED")).retrieve().toEntity(String.class);
+        assertThat(canceled.getStatusCode().value()).isEqualTo(200);
+        assertThat(json(canceled.getBody()).path("data").path("adjustmentNet").asText()).isEqualTo("-30000.00");
+    }
+
     @Test
     @DisplayName("quantity change raises one prorated adjustment, replays safely, and refuses backdating")
     void quantityChangeIsProratedOnce() {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api, formatINR } from '../../../services/api';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
 import { CompatibilityEditor } from '../../../components/recommendations/CompatibilityEditor';
+import { CatalogEditor } from '../../../components/operations/CatalogEditor';
 import {
   Layers,
   Box,
@@ -92,6 +93,7 @@ export function CatalogAdminPage() {
       </div>
 
       <CompatibilityEditor variants={variants} onSaved={loadData} />
+      <CatalogEditor products={products} variants={variants} categories={categories} plans={plans} warehouses={warehouses} onSaved={loadData} />
       {/* Tabs */}
       <div className="flex overflow-x-auto border-b border-slate-200 space-x-4">
         {[

@@ -3,6 +3,8 @@ import { api, formatINR, formatDate, formatDateTime } from '../../../services/ap
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
 import { Modal } from '../../../components/common/Modal';
+import { OrderFulfillmentDesk } from '../../../components/operations/OrderFulfillmentDesk';
+import { ReplenishmentEditor } from '../../../components/operations/ReplenishmentEditor';
 import {
   PackageCheck,
   Truck,
@@ -26,6 +28,7 @@ export function FulfillmentPage() {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   // Goods Receipt Modal State
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
@@ -47,11 +50,12 @@ export function FulfillmentPage() {
   const loadData = useCallback(async () => {
     try {
       setRefreshing(true);
+      setError('');
       const [stocksRes, ordersRes, whRes, varRes] = await Promise.all([
-        api.get('/stock-levels').catch(() => []),
-        api.get('/orders').catch(() => ({ content: [] })),
-        api.get('/warehouses').catch(() => []),
-        api.get('/variants').catch(() => []),
+        api.get('/stock-levels'),
+        api.get('/orders?pageSize=100'),
+        api.get('/warehouses'),
+        api.get('/products?pageSize=100').then(async p => (await Promise.all(p.items.map(product => api.get(`/variants?productId=${product.id}`)))).flat()),
       ]);
 
       setStockLevels(Array.isArray(stocksRes) ? stocksRes : []);
@@ -68,6 +72,7 @@ export function FulfillmentPage() {
       }
     } catch (err) {
       console.error('Failed to load fulfillment data:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -134,6 +139,8 @@ export function FulfillmentPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {error && <p role="alert" className="error-notice">{error}</p>}
+      <ReplenishmentEditor levels={stockLevels} onSaved={loadData} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -399,54 +406,7 @@ export function FulfillmentPage() {
         subtitle={`Order Split Analysis for ID: ${selectedOrderId?.slice(0, 8)}`}
         maxWidth="max-w-2xl"
       >
-        {loadingAllocation ? (
-          <div className="py-12 text-center">
-            <LoadingSpinner size="md" />
-          </div>
-        ) : allocationData ? (
-          <div className="space-y-4 text-xs">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-              <div className="font-semibold text-slate-800">
-                Mode: Cost-Aware Balanced Allocation
-              </div>
-              <div className="text-slate-500">
-                Penalizes split dispatches and selects nearest stock to minimize logistics cost.
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Warehouse Parcels</div>
-              {(allocationData.shipments || allocationData.parcels || []).length === 0 ? (
-                <div className="p-4 bg-slate-50 rounded text-slate-400 text-center">
-                  All lines satisfied from primary node or pending inward movement.
-                </div>
-              ) : (
-                (allocationData.shipments || allocationData.parcels || []).map((p, i) => (
-                  <div key={i} className="p-3 border border-slate-200 rounded-lg flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-slate-900">Parcel #{i + 1} — Warehouse {p.warehouseCode}</div>
-                      <div className="text-[11px] text-slate-500">{p.itemCount || 1} line item(s) allocated</div>
-                    </div>
-                    <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-semibold text-[11px]">
-                      Ready for Dispatch
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setAllocationModalOpen(false)}
-                className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800"
-              >
-                Close Plan
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="py-6 text-center text-slate-400">No allocation details available.</div>
-        )}
+        {selectedOrderId && <OrderFulfillmentDesk orderId={selectedOrderId} warehouses={warehouses} onChanged={loadData} />}
       </Modal>
     </div>
   );

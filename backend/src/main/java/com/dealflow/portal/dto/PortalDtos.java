@@ -76,7 +76,14 @@ public final class PortalDtos {
             String description,
             BigDecimal quantity,
             BigDecimal unitPrice,
+            /** Line plus order discount combined — what this line actually costs. */
             int discountPercentBp,
+            /**
+             * The discount carried by this line alone, without the order-level
+             * one. A counteroffer proposes this number; seeding a form with the
+             * combined figure would silently re-apply the order discount twice.
+             */
+            int lineDiscountPercentBp,
             BigDecimal lineTotal,
             BigDecimal tax,
             String billingCadence,
@@ -141,6 +148,8 @@ public final class PortalDtos {
             boolean expired,
             String backorderTerms,
             String invoicingNote,
+            /** Order-level discount on these terms, so a counteroffer can start from it. */
+            int orderDiscountBp,
             List<PortalLine> lines,
             PortalTotals totals,
             List<PortalActivity> activity,

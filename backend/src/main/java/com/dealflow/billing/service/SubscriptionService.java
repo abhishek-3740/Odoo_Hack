@@ -69,13 +69,14 @@ public class SubscriptionService {
     private final BusinessClock clock;
     private final ObjectMapper objectMapper;
     private final AppProperties properties;
+    private final UnusedSubscriptionCoverage unusedCoverage;
 
     public SubscriptionService(SubscriptionRepository subscriptions, SubscriptionChangeRepository changes,
                                InvoiceRepository invoices, InvoiceLineRepository invoiceLines,
                                CreditNoteRepository creditNotes, ProrationCalculator proration,
                                BillingService billingService, SettlementService settlementService,
                                AuditService audit, OutboxWriter outbox, BusinessClock clock,
-                               ObjectMapper objectMapper, AppProperties properties) {
+                               ObjectMapper objectMapper, AppProperties properties, UnusedSubscriptionCoverage unusedCoverage) {
         this.subscriptions = subscriptions;
         this.changes = changes;
         this.invoices = invoices;
@@ -89,6 +90,7 @@ public class SubscriptionService {
         this.clock = clock;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.unusedCoverage = unusedCoverage;
     }
 
     // -------------------------------------------------------------- preview
@@ -252,29 +254,12 @@ public class SubscriptionService {
         long creditTax = 0;
 
         if (policy == CancellationPolicy.IMMEDIATE_PRORATED) {
-            // Work from the charges actually raised, each with its own coverage
-            // window. This is what prevents crediting the same days twice.
-            List<ProrationCalculator.ChargeSegment> segments = invoiceLines
-                    .findBySubscriptionIdOrderByCoverageStartAsc(subscription.getId()).stream()
-                    .filter(line -> line.getCoverageStart() != null && line.getCoverageEnd() != null)
-                    .map(line -> new ProrationCalculator.ChargeSegment(
-                            line.getCoverageStart(), line.getCoverageEnd(),
-                            line.getNetMinor(), line.getTaxMinor()))
-                    .toList();
-
-            var breakdown = proration.unusedCoverage(segments, effectiveDate);
-            creditNet = breakdown.netMinor();
-            creditTax = breakdown.taxMinor();
-
-            // Anything already credited for this subscription is deducted, so a
-            // second cancellation attempt cannot credit the same period again.
-            long alreadyCredited = creditNotes.findBySubscriptionId(subscription.getId()).stream()
-                    .mapToLong(CreditNote::getTotalMinor).sum();
-            long creditTotal = Math.max(0, (creditNet + creditTax) - alreadyCredited);
-
-            if (creditTotal > 0) {
-                long netPortion = Math.min(creditNet, creditTotal);
-                long taxPortion = creditTotal - netPortion;
+            var remaining = unusedCoverage.at(subscription.getId(), effectiveDate);
+            creditNet = remaining.net();
+            creditTax = remaining.tax();
+            if (creditNet + creditTax > 0) {
+                long netPortion = creditNet;
+                long taxPortion = creditTax;
                 CreditNote note = raiseCreditNote(subscription, change, netPortion, taxPortion,
                         effectiveDate, subscription.getPeriodEnd(),
                         "Unused service after cancellation", actor);

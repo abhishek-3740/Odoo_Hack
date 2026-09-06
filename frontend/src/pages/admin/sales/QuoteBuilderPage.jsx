@@ -23,6 +23,7 @@ import {
   ChevronDown,
   Info,
   Building2,
+  Handshake,
 } from 'lucide-react';
 
 import { RecommendationPanel } from '../../../components/recommendations/RecommendationPanel';
@@ -35,6 +36,7 @@ export function QuoteBuilderPage() {
   const { user } = useAuth();
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [adopting, setAdopting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const evaluationSequence = useRef(0);
@@ -279,10 +281,12 @@ export function QuoteBuilderPage() {
       await api.post(`/quotes/${id}/submissions`, payload);
       setSubmitModalOpen(false);
       setSubmitNote('');
-      alert('Quotation submitted for approval!');
+      setActionError('');
+      setNotice('Submitted. Approval routing is shown in the policy panel below.');
       loadQuoteEvaluation();
     } catch (err) {
-      alert('Submission failed: ' + err.message);
+      setSubmitModalOpen(false);
+      setActionError('Submission failed: ' + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -295,25 +299,31 @@ export function QuoteBuilderPage() {
       const res = await api.post(`/quotes/${id}/shares`, {});
       setShareResult(res);
       setShareModalOpen(true);
+      setActionError('');
       loadQuoteEvaluation();
     } catch (err) {
-      alert('Failed to share quote: ' + err.message);
+      setActionError('Could not share this quotation: ' + err.message);
     }
   };
 
   // Adopt Customer Counteroffer
   const handleAdoptCounteroffer = async () => {
-    if (!evaluation?.revisionId) return;
+    if (!evaluation?.revisionId || adopting) return;
+    setAdopting(true);
+    setActionError('');
+    setNotice('');
     try {
       await api.post(`/quotes/${id}/adoptions`, {
         revisionId: evaluation.revisionId,
         expectedRowVersion: evaluation.rowVersion,
         note: 'Adopted customer proposal terms',
       });
-      alert('Customer counteroffer successfully adopted!');
-      loadQuoteEvaluation();
+      setNotice('Customer terms adopted. The remaining gates are shown under Execution Gates.');
+      await loadQuoteEvaluation();
     } catch (err) {
-      alert('Failed to adopt counteroffer: ' + err.message);
+      setActionError('Could not adopt these terms: ' + err.message);
+    } finally {
+      setAdopting(false);
     }
   };
 
@@ -324,7 +334,7 @@ export function QuoteBuilderPage() {
       setHistoryLogs(Array.isArray(history) ? history : []);
       setHistoryDrawerOpen(true);
     } catch (err) {
-      alert('Failed to load history: ' + err.message);
+      setActionError('Could not load the audit trail: ' + err.message);
     }
   };
 
@@ -339,6 +349,10 @@ export function QuoteBuilderPage() {
   if (error) return <section className="panel empty-state"><h1>Quotation could not load</h1><p role="alert">{error}</p><button className="button-primary" onClick={loadQuoteEvaluation}>Try again</button></section>;
 
   const canEdit = (user?.role === 'ADMIN' || user?.profileId === evaluation?.ownerProfileId) && !evaluation?.gates?.orderExists && !['CONFIRMED', 'CANCELED', 'LOST', 'EXPIRED'].includes(evaluation?.stage);
+  // The backend names this source CUSTOMER_COUNTER. When it is current, the
+  // terms on screen are literally the customer's proposal, not ours.
+  const isCustomerProposal = evaluation?.revisionSource === 'CUSTOMER_COUNTER';
+  const awaitingAdoption = isCustomerProposal && !evaluation?.gates?.sellerAdopted && !evaluation?.gates?.orderExists;
   const totals = evaluation?.totals || {};
   const risk = evaluation?.risk || {};
   const stockPreview = evaluation?.stockPreview || [];
@@ -431,17 +445,74 @@ export function QuoteBuilderPage() {
             <span>Share Customer Portal</span>
           </button>
 
-          {canEdit && evaluation?.revisionSource === 'CUSTOMER' && !evaluation?.gates?.sellerAdopted && !evaluation?.gates?.orderExists && (
-            <button
-              onClick={handleAdoptCounteroffer}
-              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Adopt Counteroffer</span>
-            </button>
-          )}
         </div>
       </div>
+
+      {/* What the customer proposed, and what it does to the deal */}
+      {awaitingAdoption && (
+        <section
+          aria-labelledby="counteroffer-heading"
+          className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-start space-x-2.5">
+              <Handshake className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <h2 id="counteroffer-heading" className="text-sm font-bold text-amber-900">
+                  The customer proposed these terms
+                </h2>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Revision #{evaluation?.revisionNo} is the customer&apos;s counteroffer. It is already priced and
+                  routed. Adopt it to agree, or edit the lines and save a revision to counter back.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleAdoptCounteroffer}
+              disabled={!canEdit || adopting || dirty || saving || evaluating}
+              className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 shadow-xs focus:outline-hidden focus:ring-2 focus:ring-amber-600/60"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{adopting ? 'Adopting…' : 'Adopt these terms'}</span>
+            </button>
+          </div>
+
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="bg-white/70 rounded-lg border border-amber-200 p-2.5">
+              <dt className="text-[11px] text-amber-800">Quotation discount</dt>
+              <dd className="font-bold text-slate-900 tabular-nums mt-0.5">
+                {bpToPercent(evaluation?.orderDiscountBp || 0)}%
+              </dd>
+            </div>
+            <div className="bg-white/70 rounded-lg border border-amber-200 p-2.5">
+              <dt className="text-[11px] text-amber-800">One-time total</dt>
+              <dd className="font-bold text-slate-900 tabular-nums mt-0.5">{formatINR(totals.oneTimeTotal)}</dd>
+            </div>
+            <div className="bg-white/70 rounded-lg border border-amber-200 p-2.5">
+              <dt className="text-[11px] text-amber-800">Contribution</dt>
+              <dd className="font-bold text-slate-900 tabular-nums mt-0.5">
+                {formatPercent(contributionPercent)}
+              </dd>
+            </div>
+            <div className="bg-white/70 rounded-lg border border-amber-200 p-2.5">
+              <dt className="text-[11px] text-amber-800">Approval needed</dt>
+              <dd className="font-bold text-slate-900 mt-0.5">
+                {risk.requiredLevel === 'MANAGER_FINANCE'
+                  ? 'Manager + Finance'
+                  : risk.requiredLevel === 'MANAGER'
+                  ? 'Manager'
+                  : 'None'}
+              </dd>
+            </div>
+          </dl>
+          {dirty && (
+            <p className="text-[11px] text-amber-900 font-medium">
+              You have unsaved edits. Save or discard them before adopting the customer&apos;s version.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* Governance & Risk Summary Banner */}
       {risk && (
@@ -657,6 +728,7 @@ export function QuoteBuilderPage() {
             dirty={dirty || evaluating || saving} readOnly={!canEdit}
             onApplied={loadQuoteEvaluation} />
           <NegotiationDesk quoteId={id} refreshKey={evaluation?.rowVersion}
+            currentRevisionId={evaluation?.revisionId}
             canReply={user?.role === 'ADMIN' || user?.id === evaluation?.ownerProfileId || user?.profileId === evaluation?.ownerProfileId} />
         </div>
 
@@ -691,27 +763,32 @@ export function QuoteBuilderPage() {
 
             {/* Order Discount Input */}
             <div className="pt-3 border-t border-slate-100">
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Header Order Discount (Basis Points)
+              <label htmlFor="order-discount-percent" className="block text-xs font-medium text-slate-700 mb-1">
+                Order Discount %
               </label>
               <div className="flex items-center space-x-2">
                 <input
+                  id="order-discount-percent"
                   type="number"
+                  inputMode="decimal"
                   min="0"
-                  max="9999"
-                  aria-label="Order discount in basis points" disabled={!canEdit}
-                  value={orderDiscountBp}
+                  max="99.99"
+                  step="0.01"
+                  disabled={!canEdit}
+                  value={bpToPercent(orderDiscountBp)}
                   onChange={(e) => {
-                    const bp = parseInt(e.target.value, 10) || 0;
+                    const bp = Math.min(9999, Math.max(0, percentToBp(e.target.value)));
                     setOrderDiscountBp(bp);
                     triggerReEvaluation(draftLines, bp);
                   }}
-                  className="w-24 p-2 border border-slate-200 rounded-lg text-xs bg-white font-medium"
+                  aria-describedby="order-discount-help"
+                  className="w-24 p-2 border border-slate-200 rounded-lg text-xs bg-white font-medium tabular-nums"
                 />
-                <span className="text-xs text-slate-500 font-medium">
-                  = {bpToPercent(orderDiscountBp)}% overall
-                </span>
+                <span className="text-xs text-slate-600 font-medium">% off every eligible line</span>
               </div>
+              <p id="order-discount-help" className="text-[11px] text-slate-500 mt-1">
+                Stacks multiplicatively with line discounts: 10% and 10% is 19% off, not 20%.
+              </p>
             </div>
 
             {/* Execution Gate Check Status */}
@@ -719,6 +796,12 @@ export function QuoteBuilderPage() {
               <div className="pt-3 border-t border-slate-100 space-y-2">
                 <div className="text-[11px] font-semibold text-slate-500 uppercase">Execution Gates</div>
                 <div className="space-y-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Seller Adopted:</span>
+                    <span className={gates.sellerAdopted ? 'text-emerald-700 font-semibold' : 'text-amber-600 font-semibold'}>
+                      {gates.sellerAdopted ? 'Adopted' : 'Pending'}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600">Approval Cleared:</span>
                     <span className={gates.approvalCleared ? 'text-emerald-700 font-semibold' : 'text-amber-600 font-semibold'}>

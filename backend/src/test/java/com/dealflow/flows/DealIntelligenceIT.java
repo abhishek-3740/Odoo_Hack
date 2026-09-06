@@ -123,4 +123,36 @@ class DealIntelligenceIT extends AbstractIntegrationTest {
         when(sarvam.complete(anyList())).thenThrow(new com.dealflow.shared.error.ApiException(com.dealflow.shared.error.ErrorCode.ASSISTANT_UNAVAILABLE,"Provider unavailable"));
         assertThat(post("/api/v1/assistant/chat",tokenFor(rep)).body(map("message","Help me with my workflow")).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(503);
     }
+
+    @Test
+    void customerOffersArePrivateVersionedAndRequestsNeverChangeCommercialTerms() {
+        var rep = person("offers-rep", Role.REP, null, null);
+        var client = customer("Offers customer", CustomerTier.BRONZE);
+        var buyer = person("offers-buyer", Role.CUSTOMER, null, client.getId());
+        var foreign = person("offers-foreign", Role.CUSTOMER, null, customer("Foreign offers", CustomerTier.BRONZE).getId());
+        var basic = stockedItem("Camera HD", 100000, 50000, false);
+        var premium = stockedItem("Camera 4K", 180000, 90000, true);
+        String group = "camera-" + UUID.randomUUID();
+        basic.setSubstitutionGroup(group); premium.setSubstitutionGroup(group); variants.saveAll(List.of(basic,premium));
+        var current = quote(tokenFor(rep), client.getId(), basic.getId());
+        String id = current.path("quoteId").asText();
+        String path = "/api/v1/portal/quotes/" + id;
+        assertThat(get(path + "/recommendations", tokenFor(buyer)).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(404);
+        assertThat(post("/api/v1/quotes/" + id + "/submissions", tokenFor(rep)).body(map("expectedRevisionId",current.path("revisionId").asText(),"expectedRowVersion",current.path("rowVersion").asLong())).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(200);
+        assertThat(post("/api/v1/quotes/" + id + "/shares", tokenFor(rep)).body(Map.of()).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(200);
+        var response = get(path + "/recommendations", tokenFor(buyer)).retrieve().toEntity(String.class);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).doesNotContain("unitCost", "margin", "contribution", "requiredApproval", "threshold");
+        assertThat(response.getBody()).contains("UPSELL", "CROSS_SELL");
+        assertThat(get(path + "/recommendations", tokenFor(foreign)).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(404);
+        String key = UUID.randomUUID().toString();
+        var body = map("variantId",premium.getId(),"replaceLineKey","main","expectedRevisionId",current.path("revisionId").asText());
+        for (int i=0;i<2;i++) assertThat(post(path + "/recommendation-requests", tokenFor(buyer)).header("Idempotency-Key",key).body(body).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(200);
+        var requests = json(get("/api/v1/quotes/" + id + "/requests",tokenFor(rep)).retrieve().toEntity(String.class).getBody()).path("data");
+        assertThat(requests.size()).isEqualTo(1);
+        var after = json(get("/api/v1/quotes/" + id,tokenFor(rep)).retrieve().toEntity(String.class).getBody()).path("data");
+        assertThat(after.path("revisionId")).isEqualTo(current.path("revisionId"));
+        assertThat(after.path("totals")).isEqualTo(current.path("totals"));
+        assertThat(post(path + "/recommendation-requests",tokenFor(buyer)).header("Idempotency-Key",UUID.randomUUID().toString()).body(map("variantId",premium.getId(),"replaceLineKey","main","expectedRevisionId",UUID.randomUUID())).retrieve().toBodilessEntity().getStatusCode().value()).isEqualTo(409);
+    }
 }
