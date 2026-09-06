@@ -33,6 +33,7 @@ import com.dealflow.portal.dto.PortalDtos.PortalTotals;
 import com.dealflow.quotes.models.CommercialHash;
 import com.dealflow.quotes.models.Quote;
 import com.dealflow.quotes.service.QuoteAccessPolicy;
+import com.dealflow.quotes.models.QuoteEnums.NegotiationStatus;
 import com.dealflow.quotes.models.QuoteEnums.NegotiationType;
 import com.dealflow.quotes.models.QuoteEnums.RevisionSource;
 import com.dealflow.quotes.models.QuoteEnums.RevisionStatus;
@@ -442,6 +443,12 @@ public class PortalService {
         approvalRouting.supersedePending(current, actor,
                 "The customer proposed different terms.");
 
+        // Only the newest proposal is live. An earlier candidate the seller
+        // never adopted describes terms that no longer exist, and leaving it
+        // OPEN would offer the rep an Adopt button for a dead revision.
+        negotiations.findOpenCandidates(quote.getId())
+                .forEach(stale -> stale.setStatus(NegotiationStatus.SUPERSEDED));
+
         QuoteRevision candidate = new QuoteRevision(quote.getId(), quote.nextRevisionNo(),
                 RevisionSource.CUSTOMER_COUNTER, customer.getCurrency(), actor.profileId());
         candidate.setOrderDiscountBp(orderDiscountBp);
@@ -585,6 +592,7 @@ public class PortalService {
                 .map(line -> new PortalLine(
                         line.getLineKey(), line.getDescription(), line.getQuantity(),
                         Money.toMajor(line.getUnitPriceMinor()), line.getEffectiveDiscountBp(),
+                        line.getLineDiscountBp(),
                         Money.toMajor(line.getNetMinor()), Money.toMajor(line.getTaxMinor()),
                         line.getIntervalMonths() == null ? "one-time"
                                 : BusinessCalendar.cadenceLabel(line.getIntervalMonths()),
@@ -609,6 +617,7 @@ public class PortalService {
                 revision.getBackorderTerms().name(),
                 "Items ordered are invoiced on confirmation. Recurring charges are billed separately "
                         + "for each period.",
+                revision.getOrderDiscountBp(),
                 portalLines, buildTotals(revision, lines),
                 activityFor(quote), revision.getCommercialHash());
     }

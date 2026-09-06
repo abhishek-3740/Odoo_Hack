@@ -65,7 +65,8 @@ public final class BillingDtos {
     public record PlanChangeRequest(
             @NotNull UUID newPlanId,
             LocalDate effectiveDate,
-            @Size(max = 500) String note) {
+            @Size(max = 500) String note,
+            Long expectedRowVersion) {
     }
 
     public record CancelSubscriptionRequest(

@@ -42,8 +42,9 @@ export function CustomerQuotesPage() {
 
   useDealEvents(
     (e) => REFRESH_EVENTS.has(e.type),
-    () => {
+    (e) => {
       loadQuotes();
+      if (e.synthetic) return;
       setFlash(true);
       setTimeout(() => setFlash(false), 2500);
     }

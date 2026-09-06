@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { api, formatINR, formatDate, bpToPercent } from '../../services/api';
+import { api, formatINR, formatDate, bpToPercent, percentToBp } from '../../services/api';
 import { useDealEvents } from '../../hooks/useDealEvents';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../components/common/LoadingState';
 import { DealRoomTimeline } from '../../components/customer/DealRoomTimeline';
+import { CustomerRecommendations } from '../../components/customer/CustomerRecommendations';
 import { NegotiationModal, AcceptanceModal } from '../../components/customer/QuoteActionModals';
 import {
   ArrowLeft,
@@ -30,7 +31,15 @@ const EVENT_WORDS = {
 
 const STALE_CODES = new Set(['STALE_QUOTE_VERSION', 'ACCEPTANCE_HASH_MISMATCH']);
 
-const emptyForm = { requestType: 'COMMENT', message: '', lineKey: '', lineDescription: '', discountBp: 0, quantity: 1 };
+const emptyForm = {
+  requestType: 'COMMENT',
+  message: '',
+  lineKey: '',
+  lineDescription: '',
+  discountPercent: '0',
+  quantity: 1,
+  orderDiscountPercent: '0',
+};
 
 export function CustomerQuoteDetailPage() {
   const { id } = useParams();
@@ -88,6 +97,9 @@ export function CustomerQuoteDetailPage() {
     (e) => e.entityType === 'Quote' && e.entityId === id,
     (e) => {
       loadQuote(true);
+      // A fallback poll is not news. Announcing one every five seconds while
+      // the socket is down reads as the page reloading itself.
+      if (e.synthetic) return;
       setLiveNote(EVENT_WORDS[e.type] || 'This quotation was updated');
       clearTimeout(liveTimer.current);
       liveTimer.current = setTimeout(() => setLiveNote(null), 6000);
@@ -106,19 +118,27 @@ export function CustomerQuoteDetailPage() {
 
   const openCounterForLine = (line) => {
     setForm({
+      ...emptyForm,
       requestType: 'COUNTER',
       message: `We would like to request an updated discount on ${line.description}.`,
       lineKey: line.lineKey,
       lineDescription: line.description,
-      discountBp: line.discountPercentBp || 0,
+      // The line's own discount, not the effective one. Seeding with the
+      // combined figure would re-apply the order discount a second time.
+      discountPercent: String(bpToPercent(line.lineDiscountPercentBp || 0)),
       quantity: line.quantity || 1,
+      orderDiscountPercent: String(bpToPercent(quote?.orderDiscountBp || 0)),
     });
     setRequestError('');
     setRequestOpen(true);
   };
 
   const openGeneralRequest = () => {
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      requestType: 'COUNTER',
+      orderDiscountPercent: String(bpToPercent(quote?.orderDiscountBp || 0)),
+    });
     setRequestError('');
     setRequestOpen(true);
   };
@@ -133,17 +153,40 @@ export function CustomerQuoteDetailPage() {
   const handleSubmitRequest = async (e) => {
     e.preventDefault();
     if (!form.message.trim()) return;
+
+    const isProposal = form.requestType !== 'COMMENT';
+    const orderDiscountBp = percentToBp(form.orderDiscountPercent);
+    const lineDiscountBp = percentToBp(form.discountPercent);
+
+    if (isProposal && (orderDiscountBp < 0 || orderDiscountBp > 9999 || lineDiscountBp > 9999)) {
+      setRequestError('A discount has to be between 0% and 99.99%.');
+      return;
+    }
+    // A proposal that repeats the terms already on the table would create a new
+    // revision at the same price and read to everyone as "nothing happened".
+    const quantityMoved =
+      !!form.lineKey && Number(form.quantity) !== Number(quote.lines?.find((l) => l.lineKey === form.lineKey)?.quantity);
+    const lineDiscountMoved =
+      !!form.lineKey && lineDiscountBp !== (quote.lines?.find((l) => l.lineKey === form.lineKey)?.lineDiscountPercentBp || 0);
+    if (isProposal && orderDiscountBp === (quote.orderDiscountBp || 0) && !quantityMoved && !lineDiscountMoved) {
+      setRequestError(
+        'These are the terms already on offer. Change a discount or a quantity, or send this as a comment instead.'
+      );
+      return;
+    }
+
     setSubmitting(true);
     setRequestError('');
     try {
-      const isCounter = form.requestType !== 'COMMENT' && form.lineKey;
       await postRequest({
         requestType: form.requestType,
         message: form.message.trim(),
         lineKey: form.lineKey || null,
-        lines: isCounter
-          ? [{ lineKey: form.lineKey, quantity: Number(form.quantity) || 1, requestedDiscountBp: parseInt(form.discountBp, 10) || 0 }]
-          : null,
+        requestedOrderDiscountBp: isProposal ? orderDiscountBp : null,
+        lines:
+          isProposal && form.lineKey
+            ? [{ lineKey: form.lineKey, quantity: Number(form.quantity) || 1, requestedDiscountBp: lineDiscountBp }]
+            : null,
       });
       setRequestOpen(false);
       setForm(emptyForm);
@@ -322,6 +365,7 @@ export function CustomerQuoteDetailPage() {
         </div>
       )}
 
+      {!closed && <CustomerRecommendations quoteId={id} revisionId={quote.revisionId} onRequested={() => loadQuote(true)} />}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* Lines */}
@@ -383,6 +427,9 @@ export function CustomerQuoteDetailPage() {
             <h3 className="font-semibold text-xs text-slate-800 uppercase tracking-wider pb-2 border-b border-slate-100">Commercial totals</h3>
             <div className="space-y-2.5 text-xs">
               <div className="flex justify-between text-slate-600"><span>One-time subtotal</span><span className="tabular-nums font-medium text-slate-800">{formatINR(totals.oneTimeSubtotal)}</span></div>
+              {quote.orderDiscountBp > 0 && (
+                <div className="flex justify-between text-amber-700"><span>Quotation discount applied</span><span className="tabular-nums font-medium">{bpToPercent(quote.orderDiscountBp)}%</span></div>
+              )}
               <div className="flex justify-between text-slate-600"><span>Applicable tax</span><span className="tabular-nums font-medium text-slate-800">{formatINR(totals.oneTimeTax)}</span></div>
               <div className="flex justify-between pt-2 border-t border-slate-100 text-sm font-bold text-slate-900"><span>One-time total</span><span className="tabular-nums text-indigo-600">{formatINR(totals.oneTimeTotal)}</span></div>
             </div>

@@ -14,8 +14,11 @@ import com.dealflow.catalog.models.Customer;
 import com.dealflow.catalog.repo.CustomerRepository;
 import com.dealflow.config.AppProperties;
 import com.dealflow.outbox.service.OutboxWriter;
+import com.dealflow.portal.models.NegotiationRequest;
+import com.dealflow.portal.repo.NegotiationRequestRepository;
 import com.dealflow.quotes.models.QuoteEnums.ApprovalStatus;
 import com.dealflow.quotes.models.QuoteEnums.BackorderTerms;
+import com.dealflow.quotes.models.QuoteEnums.NegotiationStatus;
 import com.dealflow.quotes.models.QuoteEnums.RevisionSource;
 import com.dealflow.quotes.models.QuoteEnums.RevisionStatus;
 import com.dealflow.quotes.models.QuoteEnums.Stage;
@@ -70,6 +73,7 @@ public class QuoteService {
     private final QuoteRepository quotes;
     private final QuoteRevisionRepository revisions;
     private final QuoteLineRepository quoteLines;
+    private final NegotiationRequestRepository negotiations;
     private final CustomerRepository customers;
     private final ProfileRepository profiles;
     private final ApprovalRoutingService approvalRouting;
@@ -83,7 +87,8 @@ public class QuoteService {
     private final AppProperties properties;
 
     public QuoteService(QuoteRepository quotes, QuoteRevisionRepository revisions,
-                        QuoteLineRepository quoteLines, CustomerRepository customers,
+                        QuoteLineRepository quoteLines, NegotiationRequestRepository negotiations,
+                        CustomerRepository customers,
                         ProfileRepository profiles, ApprovalRoutingService approvalRouting,
                         QuoteEvaluationService evaluationService, QuoteAccessPolicy accessPolicy,
                         QuoteGateListener gateListener, AuditService audit, OutboxWriter outbox,
@@ -91,6 +96,7 @@ public class QuoteService {
         this.quotes = quotes;
         this.revisions = revisions;
         this.quoteLines = quoteLines;
+        this.negotiations = negotiations;
         this.customers = customers;
         this.profiles = profiles;
         this.approvalRouting = approvalRouting;
@@ -216,6 +222,11 @@ public class QuoteService {
             current.markSuperseded();
             supersedePendingApprovals(current, actor, now,
                     "The quotation was revised before this step was decided.");
+            // Countering back is a valid answer to a proposal, but the proposal
+            // itself is now history: its candidate revision is no longer current
+            // and can never be adopted (edge case E07).
+            closeCandidateRequests(current.getId(), actor, now, NegotiationStatus.SUPERSEDED,
+                    "Your account manager responded with revised terms.");
             target = new QuoteRevision(quote.getId(), quote.nextRevisionNo(),
                     RevisionSource.SELLER, customer.getCurrency(), actor.profileId());
             revisions.save(target);
@@ -415,6 +426,15 @@ public class QuoteService {
             revision.recordSellerAdoption(actor.profileId(), now);
             quote.touchActivity(now);
 
+            // The customer asked for these terms in a negotiation request. Now
+            // that the seller has agreed to them, that request is answered:
+            // leaving it OPEN would keep offering an Adopt button for terms
+            // already adopted, and the customer's deal room would still show
+            // the ask as unanswered.
+            closeCandidateRequests(revision.getId(), actor, now, NegotiationStatus.ADOPTED,
+                    request.note() == null || request.note().isBlank()
+                            ? "Your proposed terms were accepted." : request.note());
+
             audit.record(actor, "REVISION_ADOPTED", "QuoteRevision", revision.getId())
                     .quote(quote.getId()).revision(revision.getId())
                     .reason(request.note())
@@ -429,6 +449,27 @@ public class QuoteService {
         gateListener.onGatesPossiblyCleared(quote.getId(), actor);
         quotes.flush();
         return renderCurrent(quote);
+    }
+
+    /**
+     * Moves the negotiation requests that produced {@code candidateRevisionId}
+     * out of OPEN once that candidate has been answered by an action rather
+     * than by words.
+     *
+     * <p>Nothing here changes commercial terms. It only stops a settled ask
+     * from being presented as still waiting on both sides of the deal room.
+     */
+    private void closeCandidateRequests(UUID candidateRevisionId, Actor actor, Instant when,
+                                        NegotiationStatus outcome, String message) {
+        for (NegotiationRequest record : negotiations.findByCandidateRevisionId(candidateRevisionId)) {
+            if (record.getStatus() != NegotiationStatus.OPEN
+                    && record.getStatus() != NegotiationStatus.ANSWERED) {
+                continue;
+            }
+            record.respond(actor.profileId(),
+                    record.getResponseMessage() == null ? message : record.getResponseMessage(),
+                    outcome, when);
+        }
     }
 
     // --------------------------------------------------------- cancellation

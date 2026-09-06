@@ -19,14 +19,17 @@ export function ManagerHealthPage() {
   const [loading, setLoading] = useState(true);
   const [sweeping, setSweeping] = useState(false);
   const [nudgingId, setNudgingId] = useState(null);
+  const [error, setError] = useState('');
 
   const loadAlerts = async () => {
     try {
       setLoading(true);
+      setError('');
       const data = await api.get('/alerts');
-      setAlerts(Array.isArray(data) ? data : []);
+      setAlerts(data.items || (Array.isArray(data) ? data : []));
     } catch (err) {
       console.error('Failed to load alerts:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -72,6 +75,7 @@ export function ManagerHealthPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {error && <p role="alert" className="error-notice">{error}</p>}
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

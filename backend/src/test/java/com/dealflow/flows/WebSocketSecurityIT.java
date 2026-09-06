@@ -77,11 +77,15 @@ class WebSocketSecurityIT extends AbstractIntegrationTest {
         UUID quoteId = UUID.fromString(json(post("/api/v1/quotes", token)
                 .body(toJson(map("customerId", alpha.getId())))
                 .retrieve().toEntity(String.class).getBody()).get("data").get("quoteId").asText());
-        post("/api/v1/quotes/" + quoteId + "/revisions", token)
-                .body(toJson(map("lines", List.of(map("variantId", laptop.getId(), "quantity", "1")))))
+        var current = json(get("/api/v1/quotes/" + quoteId, token).retrieve().toEntity(String.class).getBody()).path("data");
+        var saved = post("/api/v1/quotes/" + quoteId + "/revisions", token)
+                .body(toJson(map("lines", List.of(map("variantId", laptop.getId(), "quantity", "1")),
+                        "expectedRowVersion", current.path("rowVersion").asLong())))
                 .retrieve().toEntity(String.class);
+        assertThat(saved.getStatusCode().value()).isEqualTo(200);
 
-        outboxDispatcher.dispatchNow();
+        // Other integration tests may have left more than one batch queued.
+        for (int i = 0; i < 100 && outboxDispatcher.dispatchNow() > 0; i++) { }
 
         String frame = frames.poll(15, TimeUnit.SECONDS);
         assertThat(frame).as("a QUOTE_REVISED frame reaches the owner").isNotNull();

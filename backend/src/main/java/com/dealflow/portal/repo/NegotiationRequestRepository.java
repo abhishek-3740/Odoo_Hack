@@ -15,6 +15,9 @@ public interface NegotiationRequestRepository extends JpaRepository<NegotiationR
 
     List<NegotiationRequest> findByQuoteIdOrderByCreatedAtDesc(UUID quoteId);
 
+    /** Every request that proposed one particular candidate revision. */
+    List<NegotiationRequest> findByCandidateRevisionId(UUID candidateRevisionId);
+
     @Query("""
             select n from NegotiationRequest n
              where n.quoteId = :quoteId

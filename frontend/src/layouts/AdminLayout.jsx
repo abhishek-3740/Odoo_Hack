@@ -62,6 +62,7 @@ export function AdminLayout() {
       items: [
         { label: 'Executive Overview', path: '/admin', icon: LayoutDashboard, exact: true },
         { label: 'Review Inbox', path: '/admin/reviews', icon: CheckSquare },
+        { label: 'Sales Reports', path: '/admin/reports', icon: FileSpreadsheet },
       ],
     },
     ...(canSales
@@ -105,6 +106,7 @@ export function AdminLayout() {
             items: [
               { label: 'Master Catalog', path: '/admin/system/catalog', icon: Layers },
               { label: 'Governance & Policy', path: '/admin/system/governance', icon: Sliders },
+              { label: 'People & Teams', path: '/admin/system/people', icon: User },
               { label: 'Jobs & Reporting', path: '/admin/system/operations', icon: PlayCircle },
             ],
           },

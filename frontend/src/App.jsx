@@ -1,41 +1,45 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoadingScreen } from './components/common/LoadingState';
+const PeoplePage = lazy(() => import('./pages/admin/system/PeoplePage').then(m => ({ default: m.PeoplePage })));
 
 // Layouts
 import { CustomerLayout } from './layouts/CustomerLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 
 // Public & Auth Pages
-import { HomePage } from './pages/public/HomePage';
-import { LoginPage } from './pages/auth/LoginPage';
-import { SignupPage } from './pages/auth/SignupPage';
-import { StaffSignupPage } from './pages/auth/StaffSignupPage';
+const HomePage = lazy(() => import('./pages/public/HomePage').then(m => ({ default: m.HomePage })));
+const LandingPage = lazy(() => import('./pages/public/LandingPage').then(m => ({ default: m.LandingPage })));
+const SalesReportPage = lazy(() => import('./pages/admin/SalesReportPage').then(m => ({ default: m.SalesReportPage })));
+const PolicyEditor = lazy(() => import('./pages/admin/system/PolicyEditor').then(m => ({ default: m.PolicyEditor })));
+const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+const SignupPage = lazy(() => import('./pages/auth/SignupPage').then(m => ({ default: m.SignupPage })));
+const StaffSignupPage = lazy(() => import('./pages/auth/StaffSignupPage').then(m => ({ default: m.StaffSignupPage })));
 
 // Customer Pages
-import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
-import { CustomerCatalogPage } from './pages/customer/CustomerCatalogPage';
-import { CustomerQuotesPage } from './pages/customer/CustomerQuotesPage';
-import { CustomerQuoteDetailPage } from './pages/customer/CustomerQuoteDetailPage';
-import { CustomerInvoicesPage } from './pages/customer/CustomerInvoicesPage';
-import { CustomerProfilePage } from './pages/customer/CustomerProfilePage';
-import { CustomerSettingsPage } from './pages/customer/CustomerSettingsPage';
+const CustomerDashboardPage = lazy(() => import('./pages/customer/CustomerDashboardPage').then(m => ({ default: m.CustomerDashboardPage })));
+const CustomerCatalogPage = lazy(() => import('./pages/customer/CustomerCatalogPage').then(m => ({ default: m.CustomerCatalogPage })));
+const CustomerQuotesPage = lazy(() => import('./pages/customer/CustomerQuotesPage').then(m => ({ default: m.CustomerQuotesPage })));
+const CustomerQuoteDetailPage = lazy(() => import('./pages/customer/CustomerQuoteDetailPage').then(m => ({ default: m.CustomerQuoteDetailPage })));
+const CustomerInvoicesPage = lazy(() => import('./pages/customer/CustomerInvoicesPage').then(m => ({ default: m.CustomerInvoicesPage })));
+const CustomerProfilePage = lazy(() => import('./pages/customer/CustomerProfilePage').then(m => ({ default: m.CustomerProfilePage })));
+const CustomerSettingsPage = lazy(() => import('./pages/customer/CustomerSettingsPage').then(m => ({ default: m.CustomerSettingsPage })));
 
 // Admin Pages
-import { AdminOverviewPage } from './pages/admin/AdminOverviewPage';
-import { SalesQuotesPage } from './pages/admin/sales/SalesQuotesPage';
-import { QuoteBuilderPage } from './pages/admin/sales/QuoteBuilderPage';
-import { ManagerApprovalsPage } from './pages/admin/manager/ManagerApprovalsPage';
-import { ManagerHealthPage } from './pages/admin/manager/ManagerHealthPage';
-import { FinanceApprovalsPage } from './pages/admin/finance/FinanceApprovalsPage';
-import { FulfillmentPage } from './pages/admin/finance/FulfillmentPage';
-import { BillingPage } from './pages/admin/finance/BillingPage';
-import { CatalogAdminPage } from './pages/admin/system/CatalogAdminPage';
-import { GovernancePage } from './pages/admin/system/GovernancePage';
-import { OperationsPage } from './pages/admin/system/OperationsPage';
+const AdminOverviewPage = lazy(() => import('./pages/admin/AdminOverviewPage').then(m => ({ default: m.AdminOverviewPage })));
+const SalesQuotesPage = lazy(() => import('./pages/admin/sales/SalesQuotesPage').then(m => ({ default: m.SalesQuotesPage })));
+const QuoteBuilderPage = lazy(() => import('./pages/admin/sales/QuoteBuilderPage').then(m => ({ default: m.QuoteBuilderPage })));
+const ManagerApprovalsPage = lazy(() => import('./pages/admin/manager/ManagerApprovalsPage').then(m => ({ default: m.ManagerApprovalsPage })));
+const ManagerHealthPage = lazy(() => import('./pages/admin/manager/ManagerHealthPage').then(m => ({ default: m.ManagerHealthPage })));
+const FinanceApprovalsPage = lazy(() => import('./pages/admin/finance/FinanceApprovalsPage').then(m => ({ default: m.FinanceApprovalsPage })));
+const FulfillmentPage = lazy(() => import('./pages/admin/finance/FulfillmentPage').then(m => ({ default: m.FulfillmentPage })));
+const BillingPage = lazy(() => import('./pages/admin/finance/BillingPage').then(m => ({ default: m.BillingPage })));
+const CatalogAdminPage = lazy(() => import('./pages/admin/system/CatalogAdminPage').then(m => ({ default: m.CatalogAdminPage })));
+const GovernancePage = lazy(() => import('./pages/admin/system/GovernancePage').then(m => ({ default: m.GovernancePage })));
+const OperationsPage = lazy(() => import('./pages/admin/system/OperationsPage').then(m => ({ default: m.OperationsPage })));
 import { AssistantDock } from './components/assistant/AssistantDock';
-import { ReviewInboxPage } from './pages/admin/ReviewInboxPage';
+const ReviewInboxPage = lazy(() => import('./pages/admin/ReviewInboxPage').then(m => ({ default: m.ReviewInboxPage })));
 
 // Protected route guard for Admin pages
 function AdminGuard({ children }) {
@@ -61,9 +65,10 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
+        <Suspense fallback={<LoadingScreen />}><Routes>
           {/* Public storefront & authentication */}
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/catalog" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/signup/staff" element={<StaffSignupPage />} />
@@ -90,6 +95,7 @@ export default function App() {
           >
             <Route index element={<AdminOverviewPage />} />
             <Route path="reviews" element={<ReviewInboxPage />} />
+            <Route path="reports" element={<SalesReportPage />} />
 
             {/* Sales Workspace */}
             <Route path="sales">
@@ -114,14 +120,15 @@ export default function App() {
             {/* System Administration & Settings */}
             <Route path="system">
               <Route path="catalog" element={<CatalogAdminPage />} />
-              <Route path="governance" element={<GovernancePage />} />
+              <Route path="governance" element={<PolicyEditor />} />
+              <Route path="people" element={<PeoplePage />} />
               <Route path="operations" element={<OperationsPage />} />
             </Route>
           </Route>
 
           {/* Catch-all fallback: the public storefront */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        </Routes></Suspense>
         <AssistantDock />
       </BrowserRouter>
     </AuthProvider>

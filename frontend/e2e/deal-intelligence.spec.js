@@ -4,7 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 // Run only against the disposable, seeded UI-test backend described in docs.
 const apiUrl = process.env.UI_TEST_API || 'http://127.0.0.1:8082/api/v1';
 async function call(request, token, path, data, method = data === undefined ? 'GET' : 'POST') {
-  const response = await request.fetch(`${apiUrl}${path}`, { method, headers: token ? { Authorization: `Bearer ${token}` } : {}, data });
+  const response = await request.fetch(`${apiUrl}${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(method === 'POST' ? { 'Idempotency-Key': crypto.randomUUID() } : {}) }, data });
   expect(response.ok(), `${method} ${path}: ${response.status()} ${response.ok() ? '' : await response.text()}`).toBeTruthy();
   return (await response.json()).data;
 }
@@ -70,7 +70,8 @@ test('cross-sell adds a real line and unsaved edits block recommendation writes'
   await login(page, rep, `/admin/sales/quotes/${quote.quoteId}`);
   const add = page.getByRole('button', { name: 'Add & save' }).first();
   await expect(add).toBeEnabled();
-  await page.getByLabel('Order discount in basis points').fill('250');
+  // Discounts are entered as percentages everywhere; 2.5% is 250 basis points.
+  await page.getByLabel('Order Discount %').fill('2.5');
   await expect(add).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save Revision' })).toBeEnabled();
   await page.getByRole('button', { name: 'Save Revision' }).click();
@@ -137,4 +138,74 @@ test('customer AI handoff, keyboard access and responsive review inbox', async (
     if (width === 320) await page.screenshot({ path: 'test-results/assistant-mobile.png' });
     await page.keyboard.press('Escape');
   }
+});
+
+test('customer sees cross-sell and upsell and sends a request without changing quote terms', async ({ page,request }) => {
+  const {tokens,rep,quote}=await setup(request);
+  await call(request,rep,`/quotes/${quote.quoteId}/submissions`,{expectedRevisionId:quote.revisionId,expectedRowVersion:quote.rowVersion});
+  await call(request,rep,`/quotes/${quote.quoteId}/shares`,{});
+  await login(page,tokens['alpha@customer.demo'],`/customer/quotes/${quote.quoteId}`);
+  await expect(page.getByRole('heading',{name:'A better fit for your team'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Request add-on'}).first()).toBeVisible();
+  await page.getByRole('button',{name:'Upsell · Upgrades',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Request upgrade'}).first()).toBeVisible();
+  await page.getByRole('button',{name:'Request upgrade'}).first().click();
+  await expect(page.getByText('Request sent to your salesperson. Follow the discussion in your deal room.')).toBeVisible();
+  const current=await call(request,rep,`/quotes/${quote.quoteId}`);
+  expect(current.revisionId).toBe(quote.revisionId);
+  expect(current.lines).toHaveLength(1);
+  const requests=await call(request,rep,`/quotes/${quote.quoteId}/requests`);
+  expect(requests.some(r=>r.message.includes('an upgrade'))).toBeTruthy();
+  expect((await new AxeBuilder({page}).include('section[aria-labelledby="customer-offers-title"]').withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([]);
+});
+
+test('real quote becomes an order and finance records payment through repaired billing form', async ({page,request})=>{
+  const {tokens,rep,quote}=await setup(request);
+  await call(request,rep,`/quotes/${quote.quoteId}/submissions`,{expectedRevisionId:quote.revisionId,expectedRowVersion:quote.rowVersion});
+  await call(request,rep,`/quotes/${quote.quoteId}/shares`,{});
+  const buyer=tokens['alpha@customer.demo'];
+  const visible=await call(request,buyer,`/portal/quotes/${quote.quoteId}`);
+  await call(request,buyer,`/portal/quotes/${quote.quoteId}/acceptances`,{revisionId:visible.revisionId,commercialHash:visible.commercialHash});
+  const current=await call(request,rep,`/quotes/${quote.quoteId}`);
+  const finance=tokens['finance@dealflow.demo'];
+  const invoices=await call(request,finance,`/invoices?customerId=${quote.customerId}&pageSize=100`);
+  // The evaluation DTO carries the order id under gates, not at the top level.
+  const invoice=invoices.items.find(i=>i.orderId===current.gates.orderId);
+  expect(invoice).toBeTruthy();
+  page.on('dialog',d=>d.accept());
+  await login(page,finance,'/admin/finance/billing');
+  await page.locator('select').first().selectOption(quote.customerId);
+  const row=page.getByRole('row').filter({hasText:invoice.reference});
+  await expect(row).toBeVisible();
+  await row.getByRole('button',{name:/Record Payment|Settle|Pay/i}).click();
+  await page.getByLabel('Payment Amount (INR)',{exact:true}).fill(String(invoice.outstanding));
+  await page.getByLabel('Bank Reference / Transaction ID',{exact:true}).fill(`AUDIT-${Date.now()}`);
+  await page.getByRole('button',{name:'Confirm Payment',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'Record Customer Payment Receipt'})).not.toBeVisible();
+  expect(Number((await call(request,finance,`/invoices/${invoice.id}`)).outstanding)).toBe(0);
+});
+
+test('catalog creation, policy publishing and report filters persist through actual APIs',async({page,request})=>{
+  const accounts=await call(request,'','/auth/demo-accounts');
+  const admin=accounts.find(a=>a.role==='ADMIN').token;
+  await login(page,admin,'/admin/system/catalog');
+  await page.getByText('Create & edit catalog configuration',{exact:true}).click();
+  await page.getByLabel('Record type',{exact:true}).selectOption('warehouses');
+  const name=`Audit warehouse ${Date.now()}`;
+  await page.getByLabel('Warehouse code',{exact:true}).fill(`AUD-${Date.now()}`);
+  await page.getByLabel('Warehouse name',{exact:true}).fill(name);
+  await page.getByLabel('Location',{exact:true}).fill('Test site');
+  await page.getByRole('button',{name:'Create record',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('Warehouse saved');
+  expect((await call(request,admin,'/warehouses')).some(w=>w.name===name)).toBeTruthy();
+  await page.goto('/admin/system/governance');
+  await page.getByLabel('Reason for the new version').fill('Audit confirms unchanged policy can publish through UI');
+  await page.getByRole('button',{name:'Publish new policy version'}).click();
+  await expect(page.getByRole('status')).toContainText('Published policy version');
+  await page.goto('/admin/reports');
+  await page.getByLabel('Quotation stage',{exact:true}).selectOption('CONFIRMED');
+  await page.getByRole('button',{name:'Apply filters',exact:true}).click();
+  const download=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Export XLSX',exact:true}).click();
+  expect((await download).suggestedFilename()).toBe('dealflow-sales.xlsx');
 });

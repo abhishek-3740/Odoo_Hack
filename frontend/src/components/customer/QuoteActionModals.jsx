@@ -13,23 +13,38 @@ function InlineError({ children }) {
   );
 }
 
-/** Counteroffer / change / comment form. State is owned by the page. */
+/**
+ * Counteroffer / change / comment form. State is owned by the page.
+ *
+ * Discounts are entered as percentages because that is what people negotiate
+ * in. They are converted to basis points at the page boundary; typing "10" here
+ * always means ten percent, never a tenth of one.
+ */
 export function NegotiationModal({ open, onClose, quote, form, setForm, onSubmit, submitting, error }) {
   if (!quote) return null;
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const isProposal = form.requestType !== 'COMMENT';
+  const currentOrderPercent = bpToPercent(quote.orderDiscountBp || 0);
+  const askedOrderPercent = Number(form.orderDiscountPercent) || 0;
+  const outOfRange = isProposal && (askedOrderPercent < 0 || askedOrderPercent > 99.99);
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="Submit a request or counteroffer" subtitle={`Proposal ${quote.reference} · Rev #${quote.versionNumber}`}>
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      title="Submit a request or counteroffer"
+      subtitle={`Proposal ${quote.reference} - Rev #${quote.versionNumber}`}
+    >
       <form onSubmit={onSubmit} className="space-y-4 text-xs">
         <InlineError>{error}</InlineError>
 
         <div>
           <span className="block font-medium text-slate-700 mb-1">Request type</span>
-          <div role="radiogroup" className="grid grid-cols-3 gap-2">
+          <div role="radiogroup" aria-label="Request type" className="grid grid-cols-3 gap-2">
             {[
-              { id: 'COUNTER', label: 'Counteroffer' },
-              { id: 'CHANGE', label: 'Item change' },
-              { id: 'COMMENT', label: 'Comment' },
+              { id: 'COUNTER', label: 'Counteroffer', hint: 'Propose new pricing' },
+              { id: 'CHANGE', label: 'Item change', hint: 'Adjust one line' },
+              { id: 'COMMENT', label: 'Comment', hint: 'Ask a question' },
             ].map((type) => (
               <button
                 type="button"
@@ -37,52 +52,101 @@ export function NegotiationModal({ open, onClose, quote, form, setForm, onSubmit
                 role="radio"
                 aria-checked={form.requestType === type.id}
                 onClick={() => setForm((f) => ({ ...f, requestType: type.id }))}
-                className={`py-2 text-center rounded-lg font-semibold border focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60 ${
+                className={`py-2 px-1 text-center rounded-lg font-semibold border focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60 ${
                   form.requestType === type.id
                     ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                {type.label}
+                <span className="block">{type.label}</span>
+                <span className="block text-[10px] font-normal text-slate-500 mt-0.5">{type.hint}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {form.lineKey && form.requestType !== 'COMMENT' && (
+        {isProposal && (
+          <div className="p-3 bg-white rounded-lg border border-indigo-200 space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <label htmlFor="neg-order-discount" className="font-semibold text-slate-800">
+                Discount you are asking for on the whole quotation
+              </label>
+              <span className="text-[11px] text-slate-600 shrink-0">now {currentOrderPercent}%</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                id="neg-order-discount"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="99.99"
+                step="0.01"
+                value={form.orderDiscountPercent}
+                onChange={set('orderDiscountPercent')}
+                aria-describedby="neg-order-discount-help"
+                aria-invalid={outOfRange || undefined}
+                className="w-28 p-2 border border-slate-200 rounded-lg bg-white tabular-nums focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
+              />
+              <span className="font-semibold text-slate-700">% off</span>
+            </div>
+            <p id="neg-order-discount-help" className="text-[11px] text-slate-600">
+              Applies across every eligible line. Your account manager still has to accept it, so nothing is
+              repriced until they do.
+            </p>
+            <div className="flex justify-between pt-2 border-t border-slate-100 text-[11px]">
+              <span className="text-slate-600">One-time total on the current terms</span>
+              <span className="tabular-nums font-semibold text-slate-800">
+                {formatINR(quote.totals?.oneTimeTotal)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {form.lineKey && isProposal && (
           <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
             <div className="font-semibold text-slate-800">Target line: {form.lineDescription || form.lineKey}</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="neg-discount" className="block text-[11px] text-slate-600 mb-1">
-                  Requested discount (basis points)
+                <label htmlFor="neg-discount" className="block text-[11px] text-slate-700 mb-1">
+                  Requested discount on this line (%)
                 </label>
                 <input
                   id="neg-discount"
                   type="number"
+                  inputMode="decimal"
                   min="0"
-                  max="9999"
-                  value={form.discountBp}
-                  onChange={set('discountBp')}
-                  className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
+                  max="99.99"
+                  step="0.01"
+                  value={form.discountPercent}
+                  onChange={set('discountPercent')}
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-white tabular-nums focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
                 />
-                <span className="text-[10px] text-slate-400 mt-0.5 block">{bpToPercent(form.discountBp)}% concession</span>
               </div>
               <div>
-                <label htmlFor="neg-qty" className="block text-[11px] text-slate-600 mb-1">
+                <label htmlFor="neg-qty" className="block text-[11px] text-slate-700 mb-1">
                   Desired quantity
                 </label>
                 <input
                   id="neg-qty"
                   type="number"
                   min="1"
+                  step="1"
                   value={form.quantity}
                   onChange={set('quantity')}
-                  className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-white tabular-nums focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
                 />
               </div>
             </div>
+            <p className="text-[10px] text-slate-600">
+              A line discount and the quotation discount stack multiplicatively: 10% and 10% is 19% off, not 20%.
+            </p>
           </div>
+        )}
+
+        {isProposal && !form.lineKey && (
+          <p className="text-[11px] text-slate-600">
+            Want to move one item instead? Close this and use <strong>Counter discount</strong> on that line.
+          </p>
         )}
 
         <div>
@@ -96,9 +160,14 @@ export function NegotiationModal({ open, onClose, quote, form, setForm, onSubmit
             value={form.message}
             onChange={set('message')}
             maxLength={2000}
-            placeholder="Detail your request, target pricing, or schedule requirements…"
+            placeholder="Detail your request, target pricing, or schedule requirements..."
             className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/60"
           />
+          {form.requestType === 'COMMENT' && (
+            <p className="text-[11px] text-slate-600 mt-1">
+              A comment never changes your price. Choose <strong>Counteroffer</strong> to propose numbers.
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end space-x-2 pt-2">
@@ -107,11 +176,11 @@ export function NegotiationModal({ open, onClose, quote, form, setForm, onSubmit
           </button>
           <button
             type="submit"
-            disabled={submitting || !form.message.trim()}
+            disabled={submitting || !form.message.trim() || outOfRange}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold rounded-lg flex items-center space-x-1.5"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>{submitting ? 'Sending…' : 'Send request'}</span>
+            <span>{submitting ? 'Sending...' : 'Send request'}</span>
           </button>
         </div>
       </form>

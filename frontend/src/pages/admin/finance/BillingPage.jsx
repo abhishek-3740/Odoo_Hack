@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api, formatINR, formatDate, formatDateTime } from '../../../services/api';
 import { StatusBadge } from '../../../components/common/StatusBadge';
 import { LoadingSpinner } from '../../../components/common/LoadingState';
 import { Modal } from '../../../components/common/Modal';
 import { InvoicePreviewModal } from '../../../components/common/InvoicePreviewModal';
+import { BillingLifecycle } from '../../../components/operations/BillingLifecycle';
 import {
   Receipt,
   CreditCard,
@@ -29,6 +30,7 @@ export function BillingPage() {
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   // Record Payment Modal State
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -45,6 +47,8 @@ export function BillingPage() {
   const [changePreview, setChangePreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [submittingChange, setSubmittingChange] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const previewSequence = useRef(0);
 
   // Invoice Preview & Export State
   const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
@@ -77,7 +81,8 @@ export function BillingPage() {
           setSelectedCustomerId(list[0].id);
         }
       } catch (err) {
-        console.error('Failed to load customers:', err);
+      console.error('Failed to load customers:', err);
+      setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -90,9 +95,10 @@ export function BillingPage() {
     if (!custId) return;
     try {
       setRefreshing(true);
+      setError('');
       const [invRes, subRes] = await Promise.all([
-        api.get(`/invoices?customerId=${custId}`).catch(() => ({ content: [] })),
-        api.get(`/subscriptions?customerId=${custId}`).catch(() => []),
+        api.get(`/invoices?customerId=${custId}&pageSize=100`),
+        api.get(`/subscriptions?customerId=${custId}`),
       ]);
 
       const invList = invRes?.items || invRes?.content || (Array.isArray(invRes) ? invRes : []);
@@ -100,6 +106,7 @@ export function BillingPage() {
       setSubscriptions(Array.isArray(subRes) ? subRes : []);
     } catch (err) {
       console.error('Failed to load customer billing data:', err);
+      setError(err.message);
     } finally {
       setRefreshing(false);
     }
@@ -114,7 +121,7 @@ export function BillingPage() {
   const handleOpenPayment = (inv) => {
     setSelectedInvoice(inv);
     setPaymentAmount(inv.outstanding || inv.total);
-    setPaymentRef(`Wire transfer receipt ref #${Math.random().toString(36).substring(2, 8).toUpperCase()}`);
+    setPaymentRef('');
     setPaymentModalOpen(true);
   };
 
@@ -125,10 +132,11 @@ export function BillingPage() {
     setSubmittingPayment(true);
     try {
       const payload = {
-        invoiceId: selectedInvoice.id,
-        amount: parseFloat(paymentAmount),
-        paymentMethod,
-        reference: paymentRef.trim(),
+        customerId: selectedCustomerId,
+        amount: paymentAmount,
+        method: paymentMethod,
+        externalReference: paymentRef.trim(),
+        allocations: [{ invoiceId: selectedInvoice.id, amount: paymentAmount }],
       };
 
       await api.postWithIdempotency('/payments', payload);
@@ -145,25 +153,28 @@ export function BillingPage() {
   // Mid-cycle Proration Preview
   const handleOpenSubChange = async (sub) => {
     setSelectedSub(sub);
-    setNewQuantity((sub.quantity || 1) + 2);
+    setNewQuantity(Number(sub.quantity || 1) + 2);
     setChangePreview(null);
     setChangeModalOpen(true);
     // Preview immediate change
-    previewQuantityChange(sub.id, (sub.quantity || 1) + 2);
+    previewQuantityChange(sub.id, Number(sub.quantity || 1) + 2);
   };
 
   const previewQuantityChange = async (subId, qty) => {
+    const sequence = ++previewSequence.current;
     try {
       setLoadingPreview(true);
+      setChangePreview(null); setPreviewError('');
       const payload = {
         newQuantity: parseInt(qty, 10),
       };
       const res = await api.post(`/subscriptions/${subId}/change-previews`, payload);
-      setChangePreview(res);
+      if (sequence === previewSequence.current) setChangePreview(res);
     } catch (err) {
       console.warn('Change preview failed:', err);
+      if (sequence === previewSequence.current) setPreviewError(err.message);
     } finally {
-      setLoadingPreview(false);
+      if (sequence === previewSequence.current) setLoadingPreview(false);
     }
   };
 
@@ -195,6 +206,8 @@ export function BillingPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {error && <p role="alert" className="error-notice">{error}</p>}
+      {selectedCustomerId && <BillingLifecycle customerId={selectedCustomerId} subscriptions={subscriptions} onChanged={loadBillingData} />}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -382,10 +395,10 @@ export function BillingPage() {
                       </td>
                       <td className="px-5 py-3.5 font-bold text-slate-800 tabular-nums">{sub.quantity} units</td>
                       <td className="px-5 py-3.5 font-semibold text-slate-900 tabular-nums">
-                        {formatINR(sub.pricePerCycle || sub.cycleAmount)}
+                        {formatINR(Number(sub.unitIntervalPrice) * Number(sub.quantity))}
                       </td>
                       <td className="px-5 py-3.5 text-slate-600">
-                        {formatDate(sub.currentPeriodStart)} &rarr; {formatDate(sub.currentPeriodEnd)}
+                        {formatDate(sub.periodStart)} &rarr; {formatDate(sub.periodEnd)}
                       </td>
                       <td className="px-5 py-3.5">
                         <StatusBadge status={sub.status || 'ACTIVE'} />
@@ -419,6 +432,7 @@ export function BillingPage() {
           <div>
             <label className="block font-medium text-slate-700 mb-1">Payment Method</label>
             <select
+              aria-label="Payment Method"
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               className="w-full p-2.5 border border-slate-200 rounded-lg bg-white font-medium"
@@ -433,6 +447,7 @@ export function BillingPage() {
           <div>
             <label className="block font-medium text-slate-700 mb-1">Payment Amount (INR)</label>
             <input
+              aria-label="Payment Amount (INR)"
               type="number"
               step="0.01"
               required
@@ -445,6 +460,7 @@ export function BillingPage() {
           <div>
             <label className="block font-medium text-slate-700 mb-1">Bank Reference / Transaction ID</label>
             <input
+              aria-label="Bank Reference / Transaction ID"
               type="text"
               required
               value={paymentRef}
@@ -480,9 +496,11 @@ export function BillingPage() {
         subtitle={`Adjusting Seat Count for ${selectedSub?.planName || 'Plan'}`}
       >
         <div className="space-y-4 text-xs">
+          {previewError && <p role="alert" className="error-notice">{previewError}</p>}
           <div>
             <label className="block font-medium text-slate-700 mb-1">Target Seat Count / Quantity</label>
             <input
+              aria-label="Target Seat Count / Quantity"
               type="number"
               min="1"
               value={newQuantity}
@@ -508,18 +526,18 @@ export function BillingPage() {
               <div className="flex justify-between text-slate-600">
                 <span>Unused Cycle Days Credit:</span>
                 <span className="tabular-nums text-slate-800 font-medium">
-                  {formatINR(changePreview.creditAmount || 0)}
+                  {formatINR(Math.max(0, -Number(changePreview.adjustmentNet)))}
                 </span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>New Quantity Prorated Charge:</span>
                 <span className="tabular-nums text-slate-800 font-medium">
-                  {formatINR(changePreview.newChargeAmount || 0)}
+                  {formatINR(Math.max(0, Number(changePreview.adjustmentNet)))}
                 </span>
               </div>
               <div className="pt-2 border-t border-indigo-200/80 flex justify-between font-bold text-indigo-900 text-sm">
                 <span>Immediate Net Adjustment:</span>
-                <span className="tabular-nums">{formatINR(changePreview.netAdjustment || 0)}</span>
+                <span className="tabular-nums">{formatINR(changePreview.adjustmentNet)}</span>
               </div>
             </div>
           ) : null}
@@ -534,7 +552,7 @@ export function BillingPage() {
             </button>
             <button
               onClick={handleCommitSubChange}
-              disabled={submittingChange}
+              disabled={submittingChange || loadingPreview || !changePreview || !!previewError}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold rounded-lg"
             >
               <span>{submittingChange ? 'Committing...' : 'Commit Prorated Change'}</span>

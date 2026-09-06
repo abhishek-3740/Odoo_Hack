@@ -124,6 +124,27 @@ public class DemoCatalogExtras {
         stock(east, phoneStd, "20", "10", "30");
         stock(main, tabletLte, "8", "3", "10");
 
+        // A bounded demo expansion: three products, four variants; no invented order history.
+        Product camera = product(hardware, "MEETING-CAM", "Meeting Room Camera",
+                "USB conference camera for hybrid teams, with privacy shutter and a wide field of view.",
+                1_200_000L, 700_000L, FulfillmentKind.STOCK, QuantityMode.INTEGER, true);
+        ProductVariant camHd = variant(camera, "CAM-HD", "Meeting Camera HD", 0L, 400, Map.of("resolution", "1080p"));
+        ProductVariant cam4k = variant(camera, "CAM-4K", "Meeting Camera 4K", 700_000L, 500, Map.of("resolution", "4K"));
+        compatible("MEETING-CAMERA", camHd, cam4k);
+        stock(main, camHd, "8", "2", "10");
+        stock(main, cam4k, "4", "1", "6");
+        Product headset = product(hardware, "HEADSET", "Team Wireless Headset",
+                "Noise-isolating USB headset for support desks and video meetings.",
+                600_000L, 330_000L, FulfillmentKind.STOCK, QuantityMode.INTEGER, true);
+        ProductVariant audio = variant(headset, "HEADSET-USB", "Wireless USB Headset", 0L, 250, Map.of("connection", "USB"));
+        stock(main, audio, "12", "3", "15");
+        Product audit = product(service, "WORKPLACE-SETUP", "Hybrid Workplace Setup",
+                "Configure conferencing devices and test one meeting room with your team.",
+                1_500_000L, 900_000L, FulfillmentKind.NONE, QuantityMode.INTEGER, false);
+        variant(audit, "ROOM-SETUP", "Meeting Room Setup", 0L, 0, Map.of("unit", "room"));
+        compatible("DISPLAY-4K", mon27, mon32);
+        compatible("RACK-1U", srv32, srv64);
+
         // ---- services: one-time, not stocked ---------------------------------
         Product training = product(service, "TRAINING", "Staff Training Day",
                 "On-site instructor-led training for up to twelve people, with materials and a follow-up session.",
@@ -176,6 +197,14 @@ public class DemoCatalogExtras {
                 .filter(product -> product.getDescription() == null
                         || PLACEHOLDER_DESCRIPTION.equals(product.getDescription()))
                 .ifPresent(product -> product.setDescription(description));
+    }
+
+    private void compatible(String group, ProductVariant... members) {
+        // Preserve any deliberate administrator assignment on an existing variant.
+        for (ProductVariant member : members) {
+            if (member.getSubstitutionGroup() == null || member.getSubstitutionGroup().isBlank())
+                member.setSubstitutionGroup(group);
+        }
     }
 
     private Product product(Category category, String code, String name, String description, long priceMinor,

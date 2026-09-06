@@ -13,6 +13,20 @@ const prompts = {
   ADMIN: ['Summarize my workspace', 'Which review cases need attention?', 'Explain the commercial controls'],
 };
 
+// The model sometimes replies with markdown; the dock renders plain text, so strip the markers.
+function plainText(content) {
+  return String(content ?? '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/(^|[\s(])[*_](?=\S)([^*_\n]*?\S)[*_](?=[\s).,;:!?]|$)/g, '$1$2')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/^ {0,3}#{1,6} +/gm, '')
+    .replace(/^ {0,3}[*+-] +/gm, '\u2022 ')
+    .replace(/^ {0,3}> ?/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function AssistantDock() {
   const { user } = useAuth();
   const { pathname } = useLocation();
@@ -90,7 +104,7 @@ function AssistantConversation({ role, quoteId }) {
           <div className="assistant-prompts">{(prompts[role] || prompts.REP).map(prompt => <button type="button" key={prompt} disabled={busy} onClick={() => send(prompt)}>{prompt}<ArrowUpRight size={16} /></button>)}</div>
         </div>}
         {messages.map((m, i) => <article key={i} className={`assistant-message ${m.role}`}>
-          <span>{m.role === 'user' ? 'You' : 'DealFlow assistant'}</span><p>{m.content}</p>
+          <span>{m.role === 'user' ? 'You' : 'DealFlow assistant'}</span><p>{m.role === 'user' ? m.content : plainText(m.content)}</p>
           {m.at && <small>{m.scope} · {new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>}
         </article>)}
         {busy && <div className="assistant-thinking" role="status">Reading your workspace…</div>}
