@@ -86,7 +86,7 @@ export function initWebSocket(token) {
   activeToken = authToken;
 
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const brokerURL = `${wsProtocol}//${window.location.host}/ws`;
+  const brokerURL = `${wsProtocol}//${window.location.host}/ws?token=${encodeURIComponent(authToken)}`;
 
   setStatus('connecting');
 

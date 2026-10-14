@@ -48,6 +48,13 @@ function AssistantConversation({ role, quoteId }) {
   const [error, setError] = useState('');
   const [handoff, setHandoff] = useState('');
   const [sending, setSending] = useState(false);
+  const [provider, setProvider] = useState('Gemini');
+
+  useEffect(() => {
+    api.get('/assistant/status').then(res => {
+      if (res?.provider) setProvider(res.provider);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (open) { dialog.current?.showModal(); input.current?.focus(); }
@@ -93,7 +100,7 @@ function AssistantConversation({ role, quoteId }) {
     <dialog ref={dialog} className="assistant-dialog" aria-modal="true" aria-labelledby="assistant-title" onCancel={() => setOpen(false)} onClose={() => setOpen(false)}>
       <header className="assistant-header">
         <div className="assistant-mark"><Bot size={22} /></div>
-        <div><h2 id="assistant-title">Your DealFlow assistant</h2><p>{quoteId ? 'This quotation' : `${role.toLowerCase()} workspace`} · Powered by Sarvam</p></div>
+        <div><h2 id="assistant-title">Your DealFlow assistant</h2><p>{quoteId ? 'This quotation' : `${role.toLowerCase()} workspace`} · Powered by {provider}</p></div>
         <button type="button" className="assistant-icon" aria-label="Close assistant" onClick={() => setOpen(false)}><X size={20} /></button>
       </header>
       <div className="assistant-context"><span className="assistant-dot" /> Answers from your authorized workspace <button className="assistant-icon" aria-label="Clear conversation" disabled={busy} onClick={() => { setMessages([]); setError(''); setHandoff(''); }}><RotateCcw size={15} /></button></div>

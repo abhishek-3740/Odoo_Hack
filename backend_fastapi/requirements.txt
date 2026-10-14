@@ -1,0 +1,17 @@
+# DealFlow360 FastAPI backend — Step A foundations.
+# Pinned minimums per migration spec; asyncpg/Postgres kept, no Docker needed for unit tests.
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+sqlalchemy[asyncio]>=2.0.28
+asyncpg>=0.29.0
+pyjwt>=2.8.0
+cryptography>=42.0.0
+passlib[bcrypt]>=1.7.4
+httpx>=0.27.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+reportlab>=4.0.0
+openpyxl>=3.1.0
+tzdata>=2024.1  # zoneinfo DB for Windows (Asia/Kolkata business clock)

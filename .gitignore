@@ -1,22 +1,69 @@
-# Node.js dependencies
+# Dependencies
 node_modules/
 **/node_modules/
 
-# Claude / Workbuddy
-/.claude
-/.workbuddy-ai
+# Python Virtual Environments & Bytecode
+venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Build output
+# Testing & Coverage
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Frontend Build output
+frontend/dist/
+**/dist/
+.vite/
 **/target/
 
 # Local configuration and secrets
+.env
 **/.env
 **/.env.*
 !**/.env.example
+!**/.env.local.example
 
-# IDE and operating-system files
+# IDE & Editor files
 .idea/
 .vscode/
 *.iml
+*.swp
+*.swo
+
+# Operating System files
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Logs & temp files
+*.log
+**/*.log
+scratch/
+**/.claude*
+**/.workbuddy*
