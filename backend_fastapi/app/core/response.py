@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Any, Generic, TypeVar
 
-from pydantic import BaseModel, PlainSerializer
+from pydantic import BaseModel, ConfigDict, PlainSerializer
 
 from fastapi.responses import JSONResponse
 
@@ -102,6 +102,8 @@ def _base_meta() -> dict[str, Any]:
 
 
 class ApiResponse(BaseModel, Generic[T]):
+    model_config = ConfigDict(from_attributes=True)
+
     data: T | None = None
     meta: dict[str, Any] = {}
 
@@ -114,6 +116,8 @@ class ApiResponse(BaseModel, Generic[T]):
 
 
 class PageResponse(BaseModel, Generic[T]):
+    model_config = ConfigDict(from_attributes=True)
+
     data: list[T] = []
     meta: dict[str, Any] = {}
 
@@ -145,6 +149,8 @@ class ErrorBody(BaseModel):
 
 
 class ErrorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     error: ErrorBody
     requestId: str
 

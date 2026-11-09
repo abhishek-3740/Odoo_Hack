@@ -23,6 +23,7 @@ lib64/
 parts/
 sdist/
 var/
+DealFlow360_Master_Study_Guide*
 wheels/
 *.egg-info/
 .installed.cfg

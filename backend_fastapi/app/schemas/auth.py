@@ -14,7 +14,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_model = ConfigDict(populate_by_name=True)
+_model = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class RegisterRequest(BaseModel):

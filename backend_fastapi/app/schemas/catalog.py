@@ -20,7 +20,7 @@ from app.schemas.money import MoneyInput
 
 
 class _Wired(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 # ------------------------------------------------------------- customers ---
