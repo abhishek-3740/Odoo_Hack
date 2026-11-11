@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA fallback. Static assets and the API/WebSocket hosts are
+# never routed here: the frontend calls the backend directly by absolute URL.
+/* /index.html 200

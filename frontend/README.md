@@ -87,4 +87,6 @@ Checked at 320, 768, 1024, and 1440 px, with horizontal page overflow treated as
 
 See [`.env.example`](./.env.example). Nothing secret goes in a `VITE_*` variable or in this repository — the database password and assistant provider keys live in the backend's environment and are never read here.
 
+For a hosted build, set `VITE_API_BASE_URL` and `VITE_WS_URL` as build-time variables (Cloudflare Pages, for example). Left unset, the app calls `/api/v1` and `/ws` on its own origin, which is what the dev proxy and a single-origin deployment expect. `public/_redirects` provides the SPA fallback.
+
 For the full setup, routes, demo personas, policy, and testing instructions, see the [root README](../README.md).

@@ -223,10 +223,90 @@ On `/sign-in`, click **Use a demo persona**, then choose a card. No password is 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
 | `API_PROXY_TARGET` | `http://127.0.0.1:8080` | Backend target for the Vite `/api` and `/ws` proxy. |
+| `VITE_API_BASE_URL` | `/api/v1` | Absolute API root for a separately hosted backend. Set at build time; unset locally so the dev proxy is used. |
+| `VITE_WS_URL` | same-origin `/ws` | Absolute WebSocket URL for a separately hosted backend. Set at build time; unset locally. |
 | `SITE_ORIGIN` | `https://dealflow360.example` | Canonical origin injected into the built landing page's SEO metadata. |
 | `E2E_BASE_URL` | unset | Point Playwright at an already-running frontend instead of starting one. |
 
 Nothing secret belongs in a `VITE_*` variable or in `frontend/.env.local`. Provider keys and the database password stay in the backend environment.
+
+---
+
+## Deployment (free tier)
+
+The reference deployment uses three free services: **Cloudflare Pages** for the React build, **Render Free** for the FastAPI service, and **Supabase Free** for PostgreSQL. No credit card is required.
+
+### 1. Database: Supabase
+
+1. Create a project at <https://supabase.com/dashboard>.
+2. Open **Project Settings → Database → Connection string → Session pooler**.
+3. Convert the URI to the asyncpg scheme and URL-encode any special characters in the password:
+
+```text
+postgresql+asyncpg://postgres.<project-ref>:<url-encoded-password>@aws-0-<region>.pooler.supabase.com:5432/postgres?ssl=require
+```
+
+Use the **session pooler** on port `5432`. The transaction pooler on `6543` does not support the prepared statements and `SELECT ... FOR UPDATE` locks used by the quotation finalizer.
+
+### 2. API: Render
+
+Create a **Web Service** from the GitHub repository:
+
+| Setting | Value |
+| :--- | :--- |
+| Root directory | `backend_fastapi` |
+| Runtime | Python 3 |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health check path | `/actuator/health` |
+| Instance type | Free |
+
+Environment:
+
+| Variable | Value |
+| :--- | :--- |
+| `PYTHON_VERSION` | `3.12.7` |
+| `DATABASE_URL` | Supabase session-pooler URL from step 1 |
+| `DB_POOL_MAX` | `5` |
+| `AUTH_JWT_SECRET` | 32+ random characters |
+| `APP_ALLOWED_ORIGINS` | `https://<project>.pages.dev` |
+| `DEMO_SEED` | `true` |
+| `DEMO_AUTH_ENABLED` | `true` |
+| `JOBS_ENABLED` | `true` |
+| `BILLING_TIMEZONE` | `Asia/Kolkata` |
+| `ALLOCATION_MODE` | `BALANCED` |
+
+`alembic upgrade head` runs on every deploy, and `DEMO_SEED=true` seeds the demo data on first start. Render Free sleeps after about 15 minutes of inactivity; the first request afterwards takes roughly a minute.
+
+### 3. Frontend: Cloudflare Pages
+
+Create a **Pages** project from the same repository:
+
+| Setting | Value |
+| :--- | :--- |
+| Framework preset | Vite |
+| Root directory | `frontend` |
+| Build command | `npm ci && npm run build` |
+| Build output directory | `dist` |
+| Node version | `22.12.0` |
+
+Build-time environment variables (everything `VITE_*` is compiled into the bundle):
+
+| Variable | Value |
+| :--- | :--- |
+| `NODE_VERSION` | `22.12.0` |
+| `VITE_API_BASE_URL` | `https://<render-service>.onrender.com/api/v1` |
+| `VITE_WS_URL` | `wss://<render-service>.onrender.com/ws` |
+| `SITE_ORIGIN` | `https://<project>.pages.dev` |
+
+`frontend/public/_redirects` already provides the SPA fallback (`/* /index.html 200`). After changing `APP_ALLOWED_ORIGINS`, restart the Render service or trigger a redeploy so CORS accepts the Pages origin.
+
+### Free-tier limits
+
+- Render: 750 instance hours per month and sleeps after ~15 minutes idle.
+- Supabase: 500 MB and a project pauses after 7 days without database activity. Pinging Render alone does not keep Supabase active.
+- Cloudflare Pages: 500 builds per month and unlimited static requests.
+- Demo data survives redeploys; migrations do not reset it.
 
 ---
 

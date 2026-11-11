@@ -8,7 +8,13 @@
 
 import type { ErrorCode } from './contracts/errors'
 
-export const API_BASE = '/api/v1'
+/**
+ * API root. Relative by default so the dev server proxy handles `/api/v1`;
+ * deployed builds set `VITE_API_BASE_URL` to the backend origin at build time.
+ */
+export const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL || '/api/v1'
+).replace(/\/+$/, '')
 
 /** Success envelope: `{ data, meta: { requestId, evaluatedAt, ... } }`. */
 export interface Envelope<T> {

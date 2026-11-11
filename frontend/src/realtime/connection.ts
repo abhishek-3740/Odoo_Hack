@@ -6,7 +6,7 @@ import type { DealEvent } from '@/api'
  * The backend exposes a native WebSocket at `/ws`, not a STOMP broker: the
  * upgrade is authenticated with the bearer token (browsers cannot attach an
  * `Authorization` header to a WebSocket, so it travels in the query string) and
- * events arrive as bare JSON frames. A STOMP client is therefore not used here �?"
+ * events arrive as bare JSON frames. A STOMP client is therefore not used here —
  * it would ask the server to negotiate a subprotocol the server does not speak.
  *
  * A module singleton rather than a hook because panels come and go and a socket
@@ -115,12 +115,23 @@ function scheduleReconnect(): void {
   }, RECONNECT_MS)
 }
 
+/**
+ * The socket endpoint. Same-origin `/ws` behind the dev proxy, or the absolute
+ * `VITE_WS_URL` baked in at build time for a separately hosted backend.
+ */
+function socketUrl(token: string): string {
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const configured = import.meta.env.VITE_WS_URL as string | undefined
+  const url = new URL(configured || `${scheme}//${window.location.host}/ws`)
+  url.searchParams.set('token', token)
+  return url.toString()
+}
+
 function openSocket(token: string): void {
   activeToken = token
   setStatus('connecting')
 
-  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${scheme}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
+  const url = socketUrl(token)
   // No subprotocol: the backend accepts the plain upgrade and pushes JSON.
   const ws = new WebSocket(url)
   socket = ws
