@@ -2,7 +2,7 @@
 
 - Schema lifecycle: we never create/drop schema here (Alembic owns it).
 - default_schema=dealflow equivalent: search_path server setting.
-- asyncpg pool: 10 connections with 20 overflow, recycled hourly.
+- asyncpg pool: DB_POOL_MAX connections plus the same overflow, recycled hourly.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ _settings = get_settings()
 
 engine = create_async_engine(
     _settings.sqlalchemy_url,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=max(1, _settings.db_pool_max),
+    max_overflow=max(0, _settings.db_pool_max),
     pool_pre_ping=True,
     pool_recycle=3600,
     connect_args={"server_settings": {"search_path": "dealflow, public"}},
