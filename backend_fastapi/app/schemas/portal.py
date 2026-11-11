@@ -295,6 +295,14 @@ async def portal_activity(
     ]
 
 
+def _compute_commercial_hash(
+    revision: QuoteRevision, lines: list[QuoteLine]
+) -> str:
+    from app.services.portal_service import hash_lines
+
+    return hash_lines(revision, lines)
+
+
 async def portal_quote_detail(
     db: AsyncSession, quote: Quote, revision: QuoteRevision
 ) -> dict[str, Any]:
@@ -343,7 +351,8 @@ async def portal_quote_detail(
         "lines": portal_lines(lines, stock),
         "totals": portal_totals(revision, lines),
         "activity": await portal_activity(db, quote.id),
-        "commercialHash": revision.commercial_hash,
+        "commercialHash": revision.commercial_hash
+        or _compute_commercial_hash(revision, lines),
     }
 
 

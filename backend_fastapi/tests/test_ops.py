@@ -193,10 +193,19 @@ def test_sweep_opens_low_stock_then_resolves_after_fix():
         assert sweep.status_code == 200, sweep.text
         assert sweep.json()["data"]["open"] >= 1
 
-        listed = client.get("/api/v1/alerts", params={"type": "LOW_STOCK"})
-        assert listed.status_code == 200, listed.text
-        mine = [a for a in listed.json()["data"]
-                if a["variantId"] == str(variant_id)]
+        mine: list[dict] = []
+        page = 0
+        while True:
+            listed = client.get(
+                "/api/v1/alerts",
+                params={"type": "LOW_STOCK", "page": page, "pageSize": 100},
+            )
+            assert listed.status_code == 200, listed.text
+            payload = listed.json()
+            mine = [a for a in payload["data"] if a["variantId"] == str(variant_id)]
+            if mine or (page + 1) * 100 >= payload["meta"]["total"]:
+                break
+            page += 1
         assert len(mine) == 1
         assert mine[0]["severity"] == "INFO"
 
@@ -214,10 +223,19 @@ def test_sweep_opens_low_stock_then_resolves_after_fix():
         client = TestClient(app)
         again = client.post("/api/v1/alerts/sweeps")
         assert again.json()["data"]["resolved"] >= 1
-        all_rows = client.get("/api/v1/alerts",
-                              params={"status": "ALL", "type": "LOW_STOCK"})
-        mine = [a for a in all_rows.json()["data"]
-                if a["variantId"] == str(variant_id)]
+        mine = []
+        page = 0
+        while True:
+            all_rows = client.get(
+                "/api/v1/alerts",
+                params={"status": "ALL", "type": "LOW_STOCK", "page": page, "pageSize": 100},
+            )
+            assert all_rows.status_code == 200, all_rows.text
+            payload = all_rows.json()
+            mine = [a for a in payload["data"] if a["variantId"] == str(variant_id)]
+            if mine or (page + 1) * 100 >= payload["meta"]["total"]:
+                break
+            page += 1
         assert mine and mine[0]["status"] == "RESOLVED"
 
 
@@ -245,8 +263,19 @@ def test_sweep_flags_stalled_quote():
         client = TestClient(app)
         sweep = client.post("/api/v1/alerts/sweeps")
         assert sweep.status_code == 200, sweep.text
-        listed = client.get("/api/v1/alerts", params={"type": "STALLED_QUOTE", "pageSize": 100})
-        mine = [a for a in listed.json()["data"] if a["quoteId"] == str(quote_id)]
+        mine: list[dict] = []
+        page = 0
+        while True:
+            listed = client.get(
+                "/api/v1/alerts",
+                params={"type": "STALLED_QUOTE", "page": page, "pageSize": 100},
+            )
+            assert listed.status_code == 200, listed.text
+            payload = listed.json()
+            mine = [a for a in payload["data"] if a["quoteId"] == str(quote_id)]
+            if mine or (page + 1) * 100 >= payload["meta"]["total"]:
+                break
+            page += 1
         assert len(mine) == 1
         assert mine[0]["severity"] == "WARNING"
         reasons = mine[0]["reasons"]

@@ -31,7 +31,7 @@ Use the hosted Supabase session-pooler settings in `backend/.env`. A local Supab
 
 ```powershell
 docker run -d --name dealflow-pg18 `
-  -e POSTGRES_PASSWORD=12345678 -e POSTGRES_USER=postgres -e POSTGRES_DB=demo `
+  -e POSTGRES_PASSWORD=change-me -e POSTGRES_USER=postgres -e POSTGRES_DB=demo `
   -p 5432:5432 -v dealflow_pg18_data:/var/lib/postgresql postgres:18
 ```
 

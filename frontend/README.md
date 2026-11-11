@@ -1,57 +1,90 @@
-# DealFlow360 frontend
+# DealFlow360 — frontend
 
-React + Vite application. This is the active frontend in the repository; the matching Spring Boot backend is in `../backend`.
+The React 19 + TypeScript client for DealFlow360. It contains three connected experiences on one design system: the public landing and catalogue, the staff workspace at `/admin`, and the customer deal room at `/customer`.
 
-## Start from VS Code
+Every price, policy decision, approval sequence, stock reservation, and proration is resolved by the backend. This application asks and displays; it never decides.
 
-Use two terminals. `npm run dev` starts Vite only; it does not start Spring Boot.
+## Running it
 
-Terminal 1, from the repository root:
-
-```powershell
-cd backend
-# JAVA_HOME must point to your installed JDK 21.
-.\mvnw.cmd spring-boot:run
+```bash
+npm install
+npm run dev          # http://127.0.0.1:3001
 ```
 
-Wait for Spring Boot to report that it started on port **8080**. It loads your ignored `backend/.env`, including hosted Supabase, demo authentication and Sarvam settings.
+`npm run dev` starts the **frontend only** and proxies `/api` and `/ws` to `API_PROXY_TARGET` (default `http://127.0.0.1:8080`). It prints that address on startup and warns if nothing is answering.
 
-Terminal 2, from the repository root:
+The backend lives in [`../backend_fastapi`](../backend_fastapi). Start it with the demo flags enabled:
 
-```powershell
-cd frontend
-npm ci
-npm run dev
+```bash
+cd ../backend_fastapi
+# activate the virtual environment first
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
 ```
 
-Open **http://127.0.0.1:3000**. Vite prints its API proxy target at startup. Both `/api` and WebSocket `/ws` target **http://127.0.0.1:8080** by default.
+The backend's `APP_ALLOWED_ORIGINS` controls CORS for direct API calls. The Vite proxy keeps `/api` and `/ws` same-origin, so the default dev setup works without it; add this origin if you call the API directly:
 
-## Different backend port
-
-Set `PORT` in `backend/.env`. Then set the matching URL in `frontend/.env.local`:
-
-```dotenv
-API_PROXY_TARGET=http://127.0.0.1:8080
+```ini
+APP_ALLOWED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001
 ```
 
-Restart both processes after changing environment files. A terminal-level `API_PROXY_TARGET` overrides the file; remove an old override with `Remove-Item Env:API_PROXY_TARGET -ErrorAction SilentlyContinue`.
+WebSocket connections authenticate with the session bearer token (or a `?token=` query parameter), not with a browser origin.
 
-Never copy backend database credentials or the Sarvam key into frontend configuration. The Vite proxy target is the backend address, not the Supabase URL.
+## Commands
 
-## Why the earlier preview worked while VS Code failed
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server on 3001 with `strictPort` |
+| `npm run build` | Typecheck, then production build with the landing page's SEO head injected |
+| `npm run preview` | Serve the build with the same API proxy |
+| `npm run typecheck` | TypeScript only |
+| `npm run lint` | ESLint, zero warnings tolerated |
+| `npm test` | Vitest unit tests |
+| `npm run test:e2e` | Playwright browser journeys |
 
-The earlier test preview used a process-only proxy override to **8082**, backed by a disposable test database. A new VS Code terminal did not inherit that override and used the old default **8081**, but the saved backend configuration used **8080**. `ECONNREFUSED 127.0.0.1:8081` meant no backend was listening there. An outdated backend process on 8080 also needed restarting.
+> **The browser journeys write real data.** They create quotations, record approvals, and accept terms. Point `API_PROXY_TARGET` at a disposable demo database and never run them against production or customer data.
 
-The implementation was already in this repository's `frontend` and `backend` folders. The differences were runtime configuration and running processes, not another source-code directory. Defaults are now aligned at 8080; the old test preview is no longer the normal product environment.
+For a read-only visual pass, `node shots.mjs` captures every screen at desktop and mobile widths into `shots/` (git-ignored). Start the frontend and backend first; set `BASE` to point at another URL.
 
-## Checks and troubleshooting
+## How it is organised
 
-- Backend health: `http://127.0.0.1:8080/actuator/health`.
-- Public catalog through Vite: `http://127.0.0.1:3000/api/v1/public/catalog`.
-- Vite uses a strict port: if 3000 is occupied, stop the existing frontend before starting another. This prevents accidentally running two different portals.
-- Vite warns when the configured backend cannot be reached. Read the backend terminal for database or startup errors.
-- `npm run build` builds `dist`. Production needs SPA fallback and a reverse proxy for `/api` and `/ws`.
-- `npm run lint` checks source.
-- `npm run test:e2e` uses a separately configured disposable backend at port 8082. These tests create and modify demo quotations; do not point them at hosted/shared data.
+```text
+src/
+  api/             Typed contracts and one resource module per domain
+  app/             Router, providers, query policy, route boundaries
+  auth/            Token adapters (local / demo / Supabase-ready), capabilities
+  design-system/   Shared primitives with loading, empty, denied, and error states
+  features/        One folder per product area: screens, components, queries
+  layouts/         Public, staff, and customer shells
+  lib/             Money, dates, class names — no domain logic
+  realtime/        Native WebSocket client and coalesced cache invalidation
+  styles/          Tailwind theme
+e2e/               Playwright journeys
+```
 
-See [the feature and verification guide](../docs/DealFlow360-Intelligence-Guide.md).
+## Decisions worth knowing
+
+**Money and dates.** Amounts cross the wire as decimal strings in major units and discounts as integer basis points; neither is converted to a float. Business dates (`YYYY-MM-DD`) are formatted by reading the string, never by constructing a `Date`, so a validity date cannot shift across time zones.
+
+**A missing figure is never zero.** `formatMoney(null)` renders an em dash. "We do not have this number" and "this number is zero" are different statements about a deal.
+
+**One-time and recurring are never summed.** ₹39,300 once and ₹3,000 a month are not ₹42,300 of anything. `comparisonNet` and MRR are always shown with the sentence that explains what they measure.
+
+**Action eligibility is centralised.** `features/quotes/actions.ts` decides what may be done, and why not, from the server's facts — gates, revision status, capabilities — never from a display label. Every disabled control carries its reason.
+
+**The three gates are independent.** Seller agreement, internal approval, and customer acceptance can land in any order, so they render as a checklist. Approval itself is sequential: both steps are created at submission and the finance step remains locked until the manager step clears.
+
+**Nothing is refreshed over a dirty form.** The quote editor debounces evaluation, cancels superseded requests, and when the server copy moves under unsaved edits it offers compare, reload, or keep-mine.
+
+**Customer and internal data are separate types, not filtered ones.** A portal response has no field for cost, margin, or a policy threshold, and a test asserts those words never appear in the deal room's rendered text.
+
+**Idempotency keys belong to intents.** `useIntentKey` holds one key while a user works on one action and mints a new one when they start another, so a retry after a dropped connection replays rather than repeats.
+
+## Accessibility and responsiveness
+
+Checked at 320, 768, 1024, and 1440 px, with horizontal page overflow treated as a defect. Wide financial tables scroll inside their own container; the document does not. Every control is labelled through `htmlFor`/`id`, colour never carries meaning alone, and the landing animation honours `prefers-reduced-motion` with a complete static graph and ordered text walkthrough.
+
+## Configuration
+
+See [`.env.example`](./.env.example). Nothing secret goes in a `VITE_*` variable or in this repository — the database password and assistant provider keys live in the backend's environment and are never read here.
+
+For the full setup, routes, demo personas, policy, and testing instructions, see the [root README](../README.md).

@@ -68,3 +68,8 @@ desktop.ini
 scratch/
 **/.claude*
 **/.workbuddy*
+
+# Local session transcripts, agent exports, and database dumps
+session-ses_*.md
+backend_fastapi/conversation_export.*
+*.dump

@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     spring_datasource_username: str = Field(default="postgres", alias="SPRING_DATASOURCE_USERNAME")
     spring_datasource_password: str = Field(default="postgres", alias="SPRING_DATASOURCE_PASSWORD")
     db_pool_max: int = Field(default=5, alias="DB_POOL_MAX")
+    # Test-only override used by tests/itutil.py; harmless at runtime.
+    dealflow_test_db_url: str = Field(default="", alias="DEALFLOW_TEST_DB_URL")
 
     # --- Identity ---
     auth_jwt_secret: str = Field(default="", alias="AUTH_JWT_SECRET")

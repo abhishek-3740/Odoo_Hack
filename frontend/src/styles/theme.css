@@ -1,0 +1,259 @@
+@import 'tailwindcss';
+
+/*
+ * DealFlow360 — "modern commercial ledger".
+ *
+ * Warm paper, deep ink, forest green for anything that commits, muted brass
+ * reserved for editorial emphasis. Premium here means hierarchy, precise
+ * figures and controlled motion, not decoration competing with the work.
+ *
+ * Every value below is a design token. Screens reference the token, never the
+ * hex, so contrast can be corrected in one place.
+ */
+
+@theme {
+  /* ---------------------------------------------------------- surfaces */
+  --color-canvas: #f6f5f0;
+  --color-canvas-sunken: #efeee7;
+  --color-panel: #ffffff;
+  --color-panel-muted: #fbfaf7;
+  --color-panel-raised: #ffffff;
+
+  /* Deep ink for navigation and the marketing masthead. */
+  --color-ink-950: #0d1a17;
+  --color-ink-900: #12211d;
+  --color-ink-800: #172c28;
+  --color-ink-700: #21403a;
+  --color-ink-600: #33544c;
+
+  /* ------------------------------------------------------------- text */
+  --color-text: #172c28;
+  --color-text-secondary: #52615b;
+  /*
+   * Measured, not chosen by eye. At 11px — the size most of these are used at —
+   * AA needs 4.5:1, and the previous #7b8a83 reached only 3.3 on the canvas.
+   * #5e6b65 clears it on white (5.6), canvas (5.1) and sunken canvas (4.8).
+   */
+  --color-text-muted: #5e6b65;
+  --color-text-inverse: #f6f5f0;
+  /* 7.1:1 on ink-900; replaces the opacity-tinted inverse text that read at 4.1. */
+  --color-text-inverse-muted: #a2aba6;
+
+  /* ---------------------------------------------------------- borders */
+  --color-line: #dce3dd;
+  --color-line-strong: #c3cec6;
+  --color-line-inverse: #2b453e;
+
+  /* ----------------------------------------------- primary action ramp */
+  --color-forest-50: #eef6f1;
+  --color-forest-100: #d5e9dd;
+  --color-forest-200: #a9d2ba;
+  --color-forest-300: #74b393;
+  --color-forest-400: #418e6c;
+  --color-forest-500: #176448;
+  --color-forest-600: #14563e;
+  --color-forest-700: #114633;
+  --color-forest-800: #0d3527;
+  --color-forest-900: #0a2a1f;
+
+  /* ------------------------------------------- editorial (brass) ramp */
+  --color-brass-50: #faf5ec;
+  --color-brass-100: #f0e4cd;
+  --color-brass-200: #dfc79b;
+  --color-brass-300: #c5a367;
+  --color-brass-400: #a8853f;
+  --color-brass-500: #8b6b38;
+  --color-brass-600: #74582e;
+  --color-brass-700: #5c4524;
+
+  /* ------------------------------------------------- semantic states */
+  /* Each is paired with a label in the UI; colour never carries meaning alone. */
+  --color-ok-surface: #e7f3ec;
+  --color-ok-border: #b6ddc6;
+  --color-ok-text: #135c3c;
+
+  --color-wait-surface: #fdf3e0;
+  --color-wait-border: #f0d9a8;
+  --color-wait-text: #7d5711;
+
+  --color-stop-surface: #fdecea;
+  --color-stop-border: #f5c6c0;
+  --color-stop-text: #8c2a1e;
+
+  --color-info-surface: #eaf1f7;
+  --color-info-border: #c3d7e8;
+  --color-info-text: #1f4a6d;
+
+  --color-neutral-surface: #f2f2ee;
+  --color-neutral-border: #dcdcd4;
+  --color-neutral-text: #55574f;
+
+  /* --------------------------------------------------------- typography */
+  --font-sans:
+    'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-serif: 'Source Serif 4', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* ------------------------------------------------------------ shape */
+  --radius-control: 0.5rem; /* 8px — buttons, inputs, chips */
+  --radius-panel: 0.75rem; /* 12px — cards, tables, dialogs */
+  --radius-showcase: 1.25rem; /* 20px — marketing diagram frame only */
+
+  /* ---------------------------------------------------------- elevation */
+  --shadow-panel: 0 1px 2px rgb(23 44 40 / 0.04), 0 1px 3px rgb(23 44 40 / 0.06);
+  --shadow-raised: 0 8px 24px -8px rgb(23 44 40 / 0.16), 0 2px 6px rgb(23 44 40 / 0.06);
+  --shadow-overlay: 0 24px 48px -12px rgb(13 26 23 / 0.28), 0 4px 12px rgb(13 26 23 / 0.1);
+
+  /* -------------------------------------------------------- animation */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-quad: cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+/* --------------------------------------------------------------- fonts */
+/*
+ * Self-hosted subsets. If a file is missing the stack falls back to the system
+ * sans/serif above rather than blocking text — `font-display: swap` plus a real
+ * fallback stack means a font that fails to load costs style, never content.
+ */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/manrope-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+20B9, U+2122;
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/source-serif-4-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+20B9, U+2122;
+}
+
+/* ----------------------------------------------------------- base layer */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem; /* 15px */
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Amounts, quantities, references and dates line up in columns. */
+  .tabular,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    /*
+     * Deliberately no colour: headings inherit from their section, so a panel on
+     * the dark ink surface gets light text without every one of them having to
+     * remember to say so. Pinning it here made the dark call-to-action heading
+     * invisible against its own background.
+     */
+    font-weight: 650;
+    letter-spacing: -0.014em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-forest-500);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  /* Firefox/Safari scrollbars inside dense financial tables. */
+  .scroll-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .scroll-subtle::-webkit-scrollbar {
+    height: 9px;
+    width: 9px;
+  }
+  .scroll-subtle::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border-radius: 9999px;
+  }
+  .scroll-subtle::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Skip link, visible only when focused. */
+  .skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -3rem;
+    z-index: 100;
+    border-radius: var(--radius-control);
+    background: var(--color-forest-500);
+    color: white;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    transition: top 160ms var(--ease-out-quint);
+  }
+  .skip-link:focus {
+    top: 0.75rem;
+  }
+}
+
+@layer utilities {
+  /* Fine paper grain for marketing surfaces. Purely decorative. */
+  .paper-grain {
+    background-image:
+      radial-gradient(circle at 12% 18%, rgb(139 107 56 / 0.05), transparent 42%),
+      radial-gradient(circle at 88% 6%, rgb(23 100 72 / 0.05), transparent 38%);
+  }
+
+  .rule-fade {
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      var(--color-line-strong) 18%,
+      var(--color-line-strong) 82%,
+      transparent
+    );
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}

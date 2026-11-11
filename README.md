@@ -1,342 +1,434 @@
 # DealFlow360
 
-> **Enterprise CPQ (Configure, Price, Quote) & Deal Execution Platform**
-> High-precision commercial math, multi-tier approval governance, an interactive customer deal room, atomic order fulfillment, billing and subscriptions, real-time events, and a context-grounded AI workspace assistant.
+**A quote-to-cash platform for governed B2B sales.** DealFlow360 combines a public product catalogue, a staff workspace for quotations and approvals, and a customer deal room where buyers negotiate and accept terms. Pricing, discount policy, approvals, stock reservations, invoicing, and proration are resolved by the backend; the frontend only asks and displays.
+
+The current application is a React 19 + TypeScript single-page app backed by a FastAPI service and PostgreSQL.
 
 ---
 
-## Tech Stack
+## Contents
+
+- [What it does](#what-it-does)
+- [Tech stack](#tech-stack)
+- [Repository layout](#repository-layout)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Demo data and personas](#demo-data-and-personas)
+- [Routes](#routes)
+- [Quote-to-cash workflow](#quote-to-cash-workflow)
+- [Discount policy v1](#discount-policy-v1)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
+
+## What it does
+
+- **CPQ and pricing** — 34-digit decimal arithmetic, volume and tier pricing, one-time and recurring charges, and a SHA-256 commercial hash that seals the exact terms of each quotation version.
+- **Versioned quotations** — every save creates a new revision with server-side repricing and a fresh policy evaluation. History, audit events, and a line-by-line diff are available in the workspace.
+- **Policy-driven approvals** — tier and category discount ceilings decide whether a quotation needs no approval, a manager step, or manager followed by finance. Approval order is enforced server-side.
+- **Three independent gates** — seller agreement, internal approval, and customer acceptance can complete in any order; the quotation cannot become an order until all three are satisfied.
+- **Customer deal room** — customers review customer-safe terms, request a discount, ask questions, accept a version, and download invoice PDFs. Cost, margin, contribution, and policy data have no field in the portal response at all.
+- **Atomic order finalization** — accepting a quotation creates the sales order, reserves stock or creates a backorder, and raises the initial one-time invoice in one transaction.
+- **Fulfillment and billing** — warehouse allocation, stock movements, shipment dispatch and tracking, receipts and allocations, refunds, credit notes, and subscription changes with proration.
+- **Operations and insight** — deal-health alerts and sweeps, sales reports with Excel export, notifications, job-run history, audit events behind commercial actions, and a native WebSocket feed for live updates.
+- **Optional AI assistant** — provider-agnostic workspace assistant grounded in the caller's authorized deals. Configure Groq, Google AI Studio Gemini, or Sarvam; the assistant is disabled when no key is present.
+- **Role-based access** — `REP`, `MANAGER`, `FINANCE`, `ADMIN`, and `CUSTOMER` capabilities are enforced on the server, not only hidden in the navigation.
+
+---
+
+## Tech stack
 
 | Layer | Technology |
 | :--- | :--- |
-| **Frontend** | React 19, Vite 8, Tailwind CSS 4, React Router 7, STOMP + native WebSocket client |
-| **Backend** | Python 3.12, FastAPI, Uvicorn |
-| **Data access** | SQLAlchemy 2.1 async ORM, asyncpg driver (`postgresql+asyncpg://`) |
-| **Validation** | Pydantic v2 / pydantic-settings |
-| **Database** | PostgreSQL 15+, schema `dealflow`, Alembic async migrations |
-| **Security** | PyJWT (local HS256, Supabase JWKS, demo tokens), Passlib bcrypt |
+| **Frontend** | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4, React Router 7, TanStack Query 5, Radix UI, Recharts |
+| **Backend** | Python 3.12, FastAPI, Uvicorn, Pydantic v2 |
+| **Data access** | SQLAlchemy 2.1 async ORM, asyncpg (`postgresql+asyncpg://`), Alembic |
+| **Database** | PostgreSQL 15+ (verified on PostgreSQL 18), schema `dealflow` |
+| **Identity** | PyJWT (local HS256 or Supabase JWKS), Passlib bcrypt, demo personas |
 | **Documents** | ReportLab (invoice PDFs), openpyxl (Excel exports) |
-| **AI** | Groq (`openai/gpt-oss-120b`) with Google AI Studio (`gemini-3.5-flash-lite`) and Sarvam fallbacks |
+| **AI** | Groq (`openai/gpt-oss-120b`), Google AI Studio (`gemini-3.5-flash-lite`), Sarvam fallback |
 
-### Stack Constraints
-
-The core platform stack — **PostgreSQL**, **SQLAlchemy 2.1 async**, **asyncpg**, and **Pydantic v2** — is fixed. If a component is not working as expected, make the smallest possible adjustment to the surrounding code or configuration, but do not replace these core technologies.
+The core data stack — PostgreSQL, SQLAlchemy async, asyncpg, and Pydantic v2 — is fixed. Prefer adapting the surrounding code rather than replacing those pieces.
 
 ---
 
-## Architecture Overview
+## Repository layout
 
-```mermaid
-flowchart TD
-    subgraph Client ["Frontend (Port 3000)"]
-        UI["React 19 + Tailwind CSS + Vite SPA"]
-        WS["Native WebSocket Client (/ws)"]
-        Dock["DealFlow AI Assistant Dock"]
-    end
-
-    subgraph Gateway ["Vite Dev Proxy"]
-        Proxy["/api -> :8080, /ws -> :8080"]
-    end
-
-    subgraph Backend ["FastAPI Backend (Port 8080)"]
-        Router["REST & WebSocket Routers"]
-        Auth["JWT Auth & RBAC Guard"]
-        Pricing["CPQ Pricing Engine (34-digit Decimal)"]
-        Policy["Discount Policy & Sequential Approvals"]
-        Finalize["Atomic Order Finalizer (SELECT FOR UPDATE)"]
-        Outbox["Outbox Poller (SKIP LOCKED)"]
-        Scheduler["Scheduled Sweeps"]
-        Assistant["AI Assistant Service"]
-    end
-
-    subgraph External ["LLM Inference Providers"]
-        Groq["Groq API"]
-        Gemini["Google AI Studio"]
-        Sarvam["Sarvam AI (fallback)"]
-    end
-
-    subgraph Storage ["Persistent Storage"]
-        PG[("PostgreSQL 15+<br/>Database: demo<br/>Schema: dealflow (Alembic-managed)")]
-    end
-
-    UI --> Proxy
-    WS --> Proxy
-    Dock --> Proxy
-    Proxy --> Router
-    Router --> Auth
-    Router --> Pricing
-    Router --> Policy
-    Router --> Finalize
-    Assistant --> Groq
-    Assistant -.-> Gemini
-    Assistant -.-> Sarvam
-    Finalize --> PG
-    Pricing --> PG
-    Policy --> PG
-    Outbox --> PG
-    Scheduler --> PG
-    Outbox -.-> WS
-```
-
----
-
-## Core Capabilities
-
-### 1. Identity, Access & Governance
-- JWT authentication with local HS256 signing, Supabase JWKS verification, and demo-token issuance.
-- Role-based access control for `REP`, `MANAGER`, `FINANCE`, `ADMIN`, and `CUSTOMER`.
-- Staff and customer registration, automatic rep provisioning, profiles, teams, and delegated approval windows.
-- One-click demo login with deterministic personas for every role.
-- Every mutation is scoped to the authenticated user's accessible customers, quotes, and teams.
-
-### 2. Catalog & Price Governance
-- Customer, category, product, variant, and warehouse management.
-- Volume/tier price rules and subscription plans with one-time vs recurring pricing.
-- Public catalog endpoint for customer-facing browsing.
-- Discount policy definitions with versioned, role-aware approval thresholds.
-
-### 3. CPQ & Pricing Engine
-- **34-digit decimal precision** with `HALF_UP` rounding — no floating-point drift on high-value contracts.
-- Volume tiers, customer tiers (Bronze, Silver, Gold, Platinum), and recurring subscription allocation.
-- **Cryptographic commercial hash** (SHA-256) sealing quantities, rates, discounts, and terms.
-- Quote lifecycle: create, evaluate, revise, submit, share, adopt, cancel, and full history.
-- Quote-level recommendations: generate, apply, dismiss, and customer-requested follow-ups.
-- Customer negotiation requests with seller responses.
-
-### 4. Approval Governance
-- Deterministic discount thresholds:
-  - `0% – 10%`: sales rep self-clears.
-  - `10% – 25%`: **Step 1 — Sales Manager**.
-  - `> 25%`: sequential **Step 1 — Sales Manager**, then **Step 2 — Finance Controller**.
-- Approval queue with decisions, reasons, reassignment, and audit events.
-- Escalations with resolution workflow, SLA nudges, health alerts, and scheduled sweeps.
-- Notifications for approval and deal events, with read tracking.
-
-### 5. Customer Portal & Deal Room
-- Shared quote review with itemized terms and downloadable PDF specifications.
-- Counter-negotiation: propose prices, request line-item changes, and ask commercial questions.
-- Seller adoption required before customer acceptance unlocks.
-- Customer invoice list/detail with PDF export.
-- Account management: profile, preferences, and password changes.
-
-### 6. Orders & Fulfillment
-- **10-step atomic order finalization** inside one transaction using `SELECT ... FOR UPDATE` row locks.
-- Immediate stock reservation (`RESERVED`) or automatic backorder creation (`BACKORDERED`).
-- Order allocation and replanning across warehouses.
-- Stock levels, stock movements, shipment dispatch, and fulfillment tracking.
-- Automatic sales order (`SO-XXXX`) and invoice (`INV-XXXX`) generation on acceptance.
-
-### 7. Billing & Subscriptions
-- Invoice listing, detail, and PDF export.
-- Payments, refunds, and credit notes.
-- Subscription plan-change previews and execution.
-- Mid-cycle subscription changes and cancellations with proration calculations.
-- Billing timezone configuration (default `Asia/Kolkata`).
-
-### 8. Reporting, Operations & Real-Time
-- Sales reporting with Excel export.
-- Job-run tracking, leased outbox polling (`SKIP LOCKED`), and scheduled sweep workers.
-- Real-time deal events over native WebSocket at `/ws`, authenticated by bearer token or `?token=`.
-- Health endpoint at `/actuator/health`.
-
-### 9. AI Workspace Assistant
-- Groq-first inference with Gemini and Sarvam fallbacks; provider status endpoint.
-- Responses grounded strictly in the caller's authorized deals, quotes, and role permissions.
-- Explains pricing formulas, approval gates, and recommended next actions in plain language.
-
-### 10. API Conventions
-- Consistent response envelopes with typed error codes and `X-Request-Id` propagation.
-- Decimal values serialized as JSON strings to preserve exact precision end to end.
-- Idempotency keys on mutating commercial operations.
-- Pydantic v2 validation at every trust boundary; no internal exception details leak to clients.
-
----
-
-## Project Structure
-
-```
-├── backend_fastapi/            # Python 3.12 FastAPI backend
+```text
+.
+├── backend_fastapi/            # Active FastAPI backend
 │   ├── app/
-│   │   ├── api/v1/             # REST routers (auth, quotes, portal, orders, billing, catalog, ops)
-│   │   ├── core/               # Config, security, async database engine, responses, exceptions
-│   │   ├── engines/            # Pure math: pricing, risk, allocation, proration, commercial hash
-│   │   ├── models/             # SQLAlchemy 2.1 async ORM models for the dealflow schema
-│   │   ├── repositories/       # Atomic sequence generators & escalation persistence
-│   │   ├── schemas/            # Pydantic v2 validation models & DTOs
-│   │   ├── services/           # Domain workflows (quotes, approvals, billing, portal, fulfillment)
-│   │   ├── websocket/          # Connection manager & authenticated /ws endpoint
-│   │   └── workers/            # SKIP LOCKED outbox poller & scheduled sweep jobs
-│   ├── migrations/             # Alembic async environment, baseline revision, schema SQL
-│   ├── tests/                  # Unit, integration, and end-to-end workflow tests
-│   ├── alembic.ini             # Alembic configuration (URL injected at runtime)
-│   ├── requirements.txt        # Pinned Python dependencies
-│   └── .env.example            # Environment template
+│   │   ├── api/v1/routers/     # REST routers: auth, quotes, portal, orders, billing, catalog, ops
+│   │   ├── core/               # Settings, security, async database engine, responses
+│   │   ├── engines/            # Pure domain math: pricing, risk, allocation, proration, hashing
+│   │   ├── models/             # SQLAlchemy ORM models for the dealflow schema
+│   │   ├── repositories/       # Sequence generators and persistence helpers
+│   │   ├── schemas/            # Pydantic request/response models
+│   │   ├── services/           # Quotation, approval, order, billing, portal, and report workflows
+│   │   ├── websocket/          # Authenticated native WebSocket endpoint at /ws
+│   │   └── workers/            # Outbox poller and scheduled sweeps
+│   ├── migrations/             # Alembic environment, baseline revision, schema SQL
+│   ├── tests/                  # Unit and integration tests (dealflow_test database)
+│   ├── alembic.ini
+│   └── requirements.txt
 │
-├── frontend/                   # React 19 + Tailwind CSS 4 + Vite SPA
+├── frontend/                   # Current React 19 + TypeScript SPA
 │   ├── src/
-│   │   ├── components/         # Reusable UI components & AI Assistant Dock
-│   │   ├── context/            # AuthContext & real-time connection state
-│   │   ├── hooks/              # useDealEvents, useConnectionStatus, and related hooks
-│   │   ├── layouts/            # Role-based admin & customer portal layouts
-│   │   ├── pages/              # Quotes, approvals, fulfillment, billing, catalog, reports, portal
-│   │   └── services/           # API client & WebSocket client
+│   │   ├── api/                # Typed resources and wire contracts
+│   │   ├── app/                # Router, providers, guards, route boundaries
+│   │   ├── auth/               # Token adapters and role capabilities
+│   │   ├── design-system/      # Shared UI primitives and states
+│   │   ├── features/           # One folder per product area
+│   │   ├── layouts/            # Public, staff, and customer shells
+│   │   ├── lib/                # Money, dates, and formatting helpers
+│   │   ├── realtime/           # Native WebSocket client and cache invalidation
+│   │   └── styles/             # Tailwind theme
+│   ├── e2e/                    # Playwright browser journeys
 │   ├── package.json
-│   └── vite.config.js          # Dev server & backend proxy routing
+│   └── vite.config.ts
 │
-└── docs/                       # Architecture diagrams and specifications
+├── backend/                    # Original Spring Boot implementation (reference)
+├── docs/                       # Architecture, implementation plan, solution report
+├── landing/                    # Earlier landing-page components (reference)
+├── ppts/                       # Presentation assets
+├── supabase_backend/           # Local Supabase CLI scratch directory
+│
+├── DealFlow360-Demo-Walkthrough.pdf   # Step-by-step browser verification guide
+├── MIGRATION_MEMORY.md                # Porting and architecture notes
+└── README.md
 ```
+
+`backend/` is kept for reference. The current setup, frontend, and instructions in this README target `backend_fastapi/`.
 
 ---
 
-## Quick Start
+## Quick start
 
 ### Prerequisites
-- **Python** `3.12+`
-- **Node.js** `18+` with `npm`
-- **PostgreSQL** `15+` running locally
 
-### 1. Backend Setup
+- **Python** 3.12+
+- **Node.js** 20.19+ and npm
+- **PostgreSQL** 15+ running locally on `127.0.0.1:5432`
+- Windows PowerShell examples are shown first; macOS/Linux equivalents are noted where they differ.
+
+### 1. Create the database
+
+```powershell
+psql -U postgres -c "CREATE DATABASE demo;"
+```
+
+If `demo` already exists, skip this step. The Alembic migration creates the `dealflow` schema inside the database.
+
+### 2. Start the backend
+
+```powershell
+cd backend_fastapi
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+For macOS or Linux:
 
 ```bash
 cd backend_fastapi
-
-# Windows (PowerShell)
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# Linux / macOS
 python3 -m venv venv
 source venv/bin/activate
-
 pip install -r requirements.txt
-```
-
-Configure the environment:
-
-```bash
 cp .env.example .env
 ```
 
-```ini
-# Preferred database variable
-DATABASE_URL=postgresql+asyncpg://postgres:your_password@127.0.0.1:5432/demo
+Edit `backend_fastapi/.env` and set at least:
 
-# SPRING_DATASOURCE_URL is also accepted
-# SPRING_DATASOURCE_URL=postgresql+asyncpg://postgres:your_password@127.0.0.1:5432/demo
+```ini
+SPRING_DATASOURCE_URL=postgresql+asyncpg://postgres:YOUR_PASSWORD@127.0.0.1:5432/demo
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=YOUR_PASSWORD
 
 AUTH_JWT_SECRET=replace-with-a-32-byte-or-longer-secret
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=openai/gpt-oss-120b
+APP_ALLOWED_ORIGINS=http://127.0.0.1:3001,http://localhost:3001
+
+DEMO_SEED=true
+DEMO_AUTH_ENABLED=true
 PORT=8080
 ```
 
-Apply migrations and start the API:
+Apply the schema and start the API:
 
-```bash
+```powershell
 alembic upgrade head
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
 ```
 
-- **API base**: `http://127.0.0.1:8080`
-- **Swagger UI**: `http://127.0.0.1:8080/docs`
-- **Health check**: `http://127.0.0.1:8080/actuator/health`
+Verify:
 
-Useful environment flags:
+- API: <http://127.0.0.1:8080>
+- Swagger UI: <http://127.0.0.1:8080/docs>
+- Health: <http://127.0.0.1:8080/actuator/health> → `{"status":"UP"}`
 
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `DEMO_SEED` | `false` | Seed demo data on startup |
-| `DEMO_AUTH_ENABLED` | `false` | Enable demo token issuance |
-| `JOBS_ENABLED` | `true` | Start outbox poller and sweep scheduler |
-| `ALLOCATION_MODE` | `BALANCED` | Warehouse allocation strategy |
-| `BILLING_TIMEZONE` | `Asia/Kolkata` | Billing/date boundary timezone |
+`DEMO_SEED=true` seeds reference data on startup and is safe to run repeatedly. Set `DEMO_SEED=false` and `DEMO_AUTH_ENABLED=false` outside demo environments.
 
-### 2. Frontend Setup
+### 3. Start the frontend
 
-```bash
+In a second terminal:
+
+```powershell
 cd frontend
 npm install
+Copy-Item .env.example .env.local
 npm run dev
 ```
 
-- Application: **`http://localhost:3000`**
-- `/api/*` and `/ws` proxy to `http://127.0.0.1:8080` (override with `API_PROXY_TARGET` in `.env.local`).
+Open <http://127.0.0.1:3001>.
+
+- The landing page is the first screen at `/`.
+- Sign in at `/sign-in`.
+- `/api/*` and `/ws` are proxied to `http://127.0.0.1:8080`.
+- To point at another backend, set `API_PROXY_TARGET` in `frontend/.env.local`.
+
+### 4. Sign in
+
+On `/sign-in`, click **Use a demo persona**, then choose a card. No password is required when `DEMO_AUTH_ENABLED=true`.
 
 ---
 
-## Demo Accounts
+## Configuration
 
-Deterministic personas are available from the sign-in screen (`/login`) when demo auth is enabled:
+### Backend (`backend_fastapi/.env`)
 
-| Persona | Role | Email | Capabilities |
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `SPRING_DATASOURCE_URL` | local example URL | SQLAlchemy async database URL. `DATABASE_URL` is also accepted and takes precedence when set. |
+| `SPRING_DATASOURCE_USERNAME` | `postgres` | Database user. |
+| `SPRING_DATASOURCE_PASSWORD` | `postgres` | Database password. |
+| `AUTH_JWT_SECRET` | empty | Local HS256 signing secret. Use 32+ random characters. |
+| `AUTH_JWK_SET_URI` | empty | Supabase JWKS endpoint; use instead of a local secret for hosted Supabase. |
+| `APP_ALLOWED_ORIGINS` | local origins | Comma-separated origins allowed by CORS. The Vite dev proxy keeps `/api` and `/ws` same-origin; list the frontend origin when calling the API directly. WebSocket connections authenticate with a bearer token or `?token=`. |
+| `DEMO_SEED` | `false` | Seed personas, customers, catalogue, stock, and policy on startup. Idempotent. |
+| `DEMO_AUTH_ENABLED` | `false` | Enable demo account discovery and demo-token sign-in. |
+| `JOBS_ENABLED` | `true` | Start the outbox poller and scheduled sweep workers. |
+| `ALLOCATION_MODE` | `BALANCED` | Warehouse allocation strategy: `BALANCED`, `MIN_SHIPMENTS`, or `MIN_COST`. |
+| `BILLING_TIMEZONE` | `Asia/Kolkata` | Timezone used for billing and business-date boundaries. |
+| `GROQ_API_KEY` | empty | Optional assistant provider. |
+| `GEMINI_API_KEY` | empty | Optional assistant provider; used when Groq is not configured. |
+| `SARVAM_API_KEY` | empty | Optional assistant fallback. |
+| `PORT` | `8080` | API port. |
+
+### Frontend (`frontend/.env.local`)
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `API_PROXY_TARGET` | `http://127.0.0.1:8080` | Backend target for the Vite `/api` and `/ws` proxy. |
+| `SITE_ORIGIN` | `https://dealflow360.example` | Canonical origin injected into the built landing page's SEO metadata. |
+| `E2E_BASE_URL` | unset | Point Playwright at an already-running frontend instead of starting one. |
+
+Nothing secret belongs in a `VITE_*` variable or in `frontend/.env.local`. Provider keys and the database password stay in the backend environment.
+
+---
+
+## Demo data and personas
+
+With `DEMO_SEED=true`, the backend seeds:
+
+- the demo personas below;
+- customers **Alpha Traders** (BRONZE), **Beta Systems** (GOLD), **Gamma Retail** (SILVER), **Delta Logistics** (SILVER), and **Epsilon Labs** (GOLD);
+- catalogue categories, products, variants, price rules, warehouses, and stock;
+- discount policy v1 and a manager delegation.
+
+| Persona | Role | Email | Use it for |
 | :--- | :--- | :--- | :--- |
-| **Sales Rep A** | `REP` | `rep.a@dealflow.demo` | Create quotes, apply discounts, submit proposals, adopt revisions |
-| **Sales Rep B** | `REP` | `rep.b@dealflow.demo` | Manage assigned territory deals and customer quotes |
-| **Sales Manager** | `MANAGER` | `manager.a@dealflow.demo` | Step 1 approvals, team margin compliance, health alerts |
-| **Finance Controller** | `FINANCE` | `finance@dealflow.demo` | Step 2 approvals, invoice settlement, dispatches |
-| **Alpha Buyer** | `CUSTOMER` | `alpha@customer.demo` | Portal access, counter-negotiation, quote acceptance |
-| **Beta Buyer** | `CUSTOMER` | `beta@customer.demo` | Gold-tier client with volume pricing and deal room access |
-| **System Admin** | `ADMIN` | `admin@dealflow.demo` | Catalog governance, discount policies, audit logging |
+| **Rep A (Sales)** | `REP` | `rep.a@dealflow.demo` | Creating and owning Alpha Traders quotations |
+| **Rep B (Sales)** | `REP` | `rep.b@dealflow.demo` | Second sales territory and team views |
+| **Manager A** | `MANAGER` | `manager.a@dealflow.demo` | Approval step 1, team reports, health nudges |
+| **Backup Manager** | `MANAGER` | `manager.backup@dealflow.demo` | Delegated manager approvals |
+| **Finance Ops** | `FINANCE` | `finance@dealflow.demo` | Approval step 2, billing, receipts, dispatch, jobs |
+| **Demo Admin** | `ADMIN` | `admin@dealflow.demo` | Catalogue, policy, people, and full-access checks |
+| **Alpha Buyer** | `CUSTOMER` | `alpha@customer.demo` | Alpha Traders deal room, negotiation, acceptance |
+| **Beta Buyer** | `CUSTOMER` | `beta@customer.demo` | Beta Systems deal room and invoices |
+
+The seeded database starts without transactional quotations, approvals, orders, or invoices. References are sequence-driven: the first new quotation is typically `Q-1000`, the first order `SO-1000`, and the first invoice `INV-1000`.
+
+For a guided browser script that creates a within-policy deal, a two-step approval deal, and a negotiated deal, see [DealFlow360-Demo-Walkthrough.pdf](./DealFlow360-Demo-Walkthrough.pdf).
 
 ---
 
-## End-to-End Walkthrough
+## Routes
 
-1. **Create a quote** — Sign in as **Rep A**, open `/admin/sales/quotes`, create a quote for **Alpha Traders**, add catalog items, and apply a **20% discount**. Submit it; the quote enters `REVIEW` with a `PENDING_MANAGER` approval step.
-2. **Manager approval** — Sign in as **Manager A**, open `/admin/manager/approvals`, review margin impact, and approve.
-3. **Finance approval** — Sign in as **Finance Ops**, open `/admin/finance/approvals`, and approve the high-concession step. The quote becomes `APPROVED`.
-4. **Publish to portal** — As **Rep A**, click **Adopt & Share with Customer**; the quote stage becomes `SENT`.
-5. **Customer acceptance** — Sign in as **Alpha Buyer**, open `/customer/quotes`, review the shared quote, and accept. The atomic finalizer then:
-   - sets the quote to `CONFIRMED`,
-   - creates sales order `SO-XXXX`,
-   - reserves stock (`RESERVED`) or creates a backorder,
-   - issues invoice `INV-XXXX`.
-6. **Ask the assistant** — Open **Ask DealFlow AI** and ask, for example, *"Explain my quote in plain language"* or *"What happens after I accept?"*
+### Public
 
-Additional workflows available in the UI: fulfillment and dispatch, billing and payments, subscription changes, catalog and policy administration, people/team management, reports, alerts, and customer account settings.
+| Route | Screen |
+| :--- | :--- |
+| `/` | Landing page |
+| `/catalogue` | Public catalogue |
+| `/sign-in` | Sign in, including demo personas |
+| `/sign-up` | Customer registration |
+| `/sign-up/team` | Internal staff registration |
+
+### Staff workspace
+
+| Route | Screen |
+| :--- | :--- |
+| `/admin` | Today — what needs attention now |
+| `/admin/quotes` | Quotation pipeline |
+| `/admin/quotes/:quoteId` | Deal workspace: quote, approvals, conversation, history |
+| `/admin/approvals` | Approval inbox |
+| `/admin/approvals/:approvalRequestId` | Approval detail |
+| `/admin/reviews` | Questions — escalations, not approvals |
+| `/admin/customers` | Customer list |
+| `/admin/customers/:customerId` | Customer detail |
+| `/admin/orders` | Orders |
+| `/admin/orders/:orderId` | Order detail and fulfillment |
+| `/admin/inventory` | Stock, receipts, and movements |
+| `/admin/billing` | Invoices, receipts, subscriptions |
+| `/admin/invoices/:invoiceId` | Invoice detail |
+| `/admin/subscriptions/:subscriptionId` | Subscription detail |
+| `/admin/health` | Deal-health alerts |
+| `/admin/notifications` | Notification inbox |
+| `/admin/reports` | Sales reports and export |
+| `/admin/catalog` | Catalogue administration |
+| `/admin/policy` | Discount policy and version history |
+| `/admin/people` | Profiles, teams, and delegations |
+| `/admin/operations` | Job runs and operational controls |
+
+### Customer portal
+
+| Route | Screen |
+| :--- | :--- |
+| `/customer` | Customer overview |
+| `/customer/catalogue` | Customer catalogue and quote requests |
+| `/customer/quotes` | Shared quotations |
+| `/customer/quotes/:quoteId` | Customer deal room |
+| `/customer/invoices` | Invoices |
+| `/customer/invoices/:invoiceId` | Invoice detail |
+| `/customer/account` | Profile, preferences, and password |
+
+Older staff paths such as `/admin/sales/quotes`, `/admin/manager/approvals`, and `/admin/finance/approvals` redirect to their current equivalents. Navigation is filtered by role, and every screen still checks its own server-enforced capabilities.
 
 ---
 
-## Database & Migrations
+## Quote-to-cash workflow
 
-Alembic manages the `dealflow` schema asynchronously through the same asyncpg engine the app uses:
+1. **Create** a quotation as a sales rep. It starts in `Draft` at version 1.
+2. **Add lines and save terms.** The server reprices the quotation and evaluates it against the policy in force. Each save creates a new revision.
+3. **Submit for approval.** Within policy, no approval step is created. Otherwise the server creates the required manager and/or finance steps.
+4. **Approve in order.** A manager clears step 1; finance step 2 stays locked until step 1 is approved.
+5. **Adopt terms.** The seller confirms the exact revision. This is the seller-agreement gate.
+6. **Share the customer portal.** The customer sees only customer-safe fields.
+7. **Negotiate if needed.** A customer counteroffer creates a new version; the seller adopts it and the customer accepts. Policy is re-evaluated on every saved version.
+8. **Accept and finalize.** Customer acceptance runs the atomic finalizer: it creates `SO-*`, reserves stock or creates a backorder, and raises the one-time invoice (`INV-*`) plus any recurring invoices.
+9. **Collect and dispatch.** Finance records receipts, refunds, and credit notes, then records shipment dispatch and tracking.
 
-```bash
+The **Next workflow step** banner on every quotation names the person who must act next. Disabled controls carry the server's reason.
+
+---
+
+## Discount policy v1
+
+The seeded policy is visible at `/admin/policy` and is versioned. A line's effective ceiling is the lower of its customer-tier ceiling and its category ceiling.
+
+| Customer tier | Maximum unconditional discount |
+| :--- | ---: |
+| BRONZE | 5% |
+| SILVER | 10% |
+| GOLD | 15% |
+
+| Category | Maximum unconditional discount |
+| :--- | ---: |
+| HARDWARE | 15% |
+| SERVICE | 10% |
+| SUBSCRIPTION | 10% |
+
+**Manager step 1** is required when any of these is true:
+
+- any line has a positive excess over its effective ceiling;
+- aggregate discount is above 12%;
+- aggregate margin is below 20%.
+
+**Finance step 2** is required when any of these is true:
+
+- the worst line is at least 8 percentage points over its ceiling;
+- weighted excess is at least 3 percentage points;
+- excess value is at least ₹5,000;
+- aggregate margin is below 15%;
+- any line has non-positive contribution.
+
+When finance is required, the manager step is still step 1. When no trigger fires, the quotation is within policy and no approval step is created. The policy definitions come from the database, so the UI and README should be read alongside the version shown at `/admin/policy`.
+
+---
+
+## Testing
+
+### Backend
+
+The backend suite covers engines, security, API workflows, approvals, billing, portal behavior, realtime events, operations, and concurrent finalization.
+
+```powershell
 cd backend_fastapi
-
-alembic current        # show applied revision
-alembic upgrade head   # apply pending migrations
-alembic downgrade base # remove the dealflow schema
-alembic revision -m "describe_change"  # create a new revision
+.\venv\Scripts\python -m pytest -q
 ```
 
-- The current head is `0001_baseline`, which creates the complete schema, sequences, constraints, triggers, and indexes.
-- `alembic_version` lives in the `public` schema so it survives a schema-level downgrade.
-- The application connects with `search_path=dealflow,public`.
-- Schema naming for some historical constraints differs from SQLAlchemy's auto-generated names, so `alembic revision --autogenerate` output is reviewed and edited before use.
+Tests use a separate `dealflow_test` database. Create it and apply the migrations once:
 
----
-
-## Test Suite
-
-The backend ships with 168 unit, integration, and end-to-end tests covering pricing math, security, API workflows, approvals, billing, portal, realtime events, and concurrent finalization:
-
-```bash
-cd backend_fastapi
-.\venv\Scripts\python -m pytest -v
+```powershell
+psql -U postgres -c "CREATE DATABASE dealflow_test;"
+$env:SPRING_DATASOURCE_URL="postgresql+asyncpg://postgres:YOUR_PASSWORD@127.0.0.1:5432/dealflow_test"
+alembic upgrade head
+Remove-Item Env:SPRING_DATASOURCE_URL
 ```
 
-The suite runs against `dealflow_test`. It expects a clean test database: accumulated quotes and alerts can push seeded rows outside the first page of results and cause `test_sweep_flags_stalled_quote` to fail. Reset the test schema before a full run if that occurs.
+The default test connection reuses the credentials from `backend_fastapi/.env` and switches the database name to `dealflow_test`. Override the whole URL with `DEALFLOW_TEST_DB_URL` when needed. The test suite expects a clean enough database; accumulated rows can push seeded records outside the first page of results.
 
-Production frontend build verification:
+### Frontend
 
-```bash
+```powershell
 cd frontend
-npm run build
+npm test          # Vitest unit tests
+npm run lint      # ESLint, zero warnings
+npm run typecheck # TypeScript only
+npm run build     # Typecheck plus production build
 ```
+
+### End-to-end
+
+```powershell
+cd frontend
+npm run test:e2e
+```
+
+Playwright starts the frontend if it is not already running, but it does **not** start the backend. Start the API with `DEMO_SEED=true` and `DEMO_AUTH_ENABLED=true` first.
+
+> **The browser journeys write real data.** They create quotations, record approvals, and accept terms. Run them only against a disposable demo database, never against production or customer data.
+
+---
+
+## Documentation
+
+- [DealFlow360-Demo-Walkthrough.pdf](./DealFlow360-Demo-Walkthrough.pdf) — step-by-step verification script for the complete workflow.
+- [`docs/`](./docs) — architecture, implementation plan, and solution report.
+- [`MIGRATION_MEMORY.md`](./MIGRATION_MEMORY.md) — notes from the Spring Boot to FastAPI migration.
+- [`frontend/README.md`](./frontend/README.md) — frontend-specific structure and design decisions.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+| :--- | :--- |
+| `No backend at http://127.0.0.1:8080` in the Vite terminal | Start the FastAPI server. `npm run dev` starts only the frontend. |
+| The header says **Not live** and updates fall back to polling | Confirm the backend is running and the session is valid. If the browser calls the API directly instead of through the Vite proxy, add the exact frontend origin to `APP_ALLOWED_ORIGINS` and restart the backend. |
+| Demo persona cards are missing on `/sign-in` | Set `DEMO_AUTH_ENABLED=true` and restart the backend. |
+| `password authentication failed` or database connection errors | Check `SPRING_DATASOURCE_*` in `backend_fastapi/.env`, confirm PostgreSQL is running, and confirm the `demo` database exists. |
+| The assistant says the provider is not configured | Set `GROQ_API_KEY`, `GEMINI_API_KEY`, or `SARVAM_API_KEY` and restart the backend. |
+| Port 3001 is already in use | Vite is configured with `strictPort`; stop the other process or change the frontend port and `APP_ALLOWED_ORIGINS` together. |
+| Port 8080 is already in use | Stop the other backend or set `PORT` and `API_PROXY_TARGET` to a matching pair. |
+| Playwright created unwanted quotations and orders | The e2e suite writes transaction data. Reset the demo database after a test run. |
 
 ---
 
 ## License
 
-This project is licensed under the Apache 2.0 License.
+Licensed under the Apache License 2.0. See [LICENSE](./LICENSE).

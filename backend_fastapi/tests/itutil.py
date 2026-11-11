@@ -10,14 +10,34 @@ from __future__ import annotations
 import uuid
 from contextlib import contextmanager
 
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.api.deps import get_current_actor
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import Actor
 
-TEST_DB_URL = "postgresql+asyncpg://postgres:12345678@127.0.0.1:5432/dealflow_test"
+
+def _test_db_url() -> str:
+    """Use the main connection settings, but point at the test database.
+
+    Set DEALFLOW_TEST_DB_URL to override the whole URL (for CI or a shared
+    PostgreSQL instance). The password is never hard-coded here.
+    """
+    explicit = get_settings().dealflow_test_db_url.strip()
+    if explicit:
+        return explicit
+    configured = get_settings().sqlalchemy_url
+    return (
+        make_url(configured)
+        .set(database="dealflow_test")
+        .render_as_string(hide_password=False)
+    )
+
+
+TEST_DB_URL = _test_db_url()
 
 # NullPool: starlette's TestClient runs each request on a fresh event loop,
 # so pooled asyncpg connections outlive their loop ("Event loop is closed"
