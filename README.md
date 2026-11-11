@@ -150,6 +150,7 @@ SPRING_DATASOURCE_USERNAME=postgres
 SPRING_DATASOURCE_PASSWORD=YOUR_PASSWORD
 
 AUTH_JWT_SECRET=replace-with-a-32-byte-or-longer-secret
+DEMO_JWT_SECRET=replace-with-a-different-32-byte-or-longer-secret
 APP_ALLOWED_ORIGINS=http://127.0.0.1:3001,http://localhost:3001
 
 DEMO_SEED=true
@@ -206,6 +207,7 @@ On `/sign-in`, click **Use a demo persona**, then choose a card. No password is 
 | `SPRING_DATASOURCE_USERNAME` | `postgres` | Database user. |
 | `SPRING_DATASOURCE_PASSWORD` | `postgres` | Database password. |
 | `AUTH_JWT_SECRET` | empty | Local HS256 signing secret. Use 32+ random characters. |
+| `DEMO_JWT_SECRET` | empty | Signing secret for demo tokens. Required when `DEMO_AUTH_ENABLED=true`; use 32+ random characters, different from `AUTH_JWT_SECRET`. |
 | `AUTH_JWK_SET_URI` | empty | Supabase JWKS endpoint; use instead of a local secret for hosted Supabase. |
 | `APP_ALLOWED_ORIGINS` | local origins | Comma-separated origins allowed by CORS. The Vite dev proxy keeps `/api` and `/ws` same-origin; list the frontend origin when calling the API directly. WebSocket connections authenticate with a bearer token or `?token=`. |
 | `DEMO_SEED` | `false` | Seed personas, customers, catalogue, stock, and policy on startup. Idempotent. |
@@ -269,6 +271,7 @@ Environment:
 | `DATABASE_URL` | Supabase session-pooler URL from step 1 |
 | `DB_POOL_MAX` | `5` |
 | `AUTH_JWT_SECRET` | 32+ random characters |
+| `DEMO_JWT_SECRET` | 32+ random characters, different from `AUTH_JWT_SECRET` |
 | `APP_ALLOWED_ORIGINS` | `https://<project>.pages.dev` |
 | `DEMO_SEED` | `true` |
 | `DEMO_AUTH_ENABLED` | `true` |
@@ -276,7 +279,7 @@ Environment:
 | `BILLING_TIMEZONE` | `Asia/Kolkata` |
 | `ALLOCATION_MODE` | `BALANCED` |
 
-`alembic upgrade head` runs on every deploy, and `DEMO_SEED=true` seeds the demo data on first start. Render Free sleeps after about 15 minutes of inactivity; the first request afterwards takes roughly a minute.
+`alembic upgrade head` runs on every deploy, and `DEMO_SEED=true` seeds the demo data on first start. Both `AUTH_JWT_SECRET` and `DEMO_JWT_SECRET` must be at least 32 characters; demo sign-in fails without the latter. Render Free sleeps after about 15 minutes of inactivity; the first request afterwards takes roughly a minute.
 
 ### 3. Frontend: Cloudflare Pages
 
@@ -500,7 +503,7 @@ Playwright starts the frontend if it is not already running, but it does **not**
 | :--- | :--- |
 | `No backend at http://127.0.0.1:8080` in the Vite terminal | Start the FastAPI server. `npm run dev` starts only the frontend. |
 | The header says **Not live** and updates fall back to polling | Confirm the backend is running and the session is valid. If the browser calls the API directly instead of through the Vite proxy, add the exact frontend origin to `APP_ALLOWED_ORIGINS` and restart the backend. |
-| Demo persona cards are missing on `/sign-in` | Set `DEMO_AUTH_ENABLED=true` and restart the backend. |
+| Demo persona cards are missing on `/sign-in` | Set `DEMO_AUTH_ENABLED=true` and a 32+ character `DEMO_JWT_SECRET`, then restart the backend. |
 | `password authentication failed` or database connection errors | Check `SPRING_DATASOURCE_*` in `backend_fastapi/.env`, confirm PostgreSQL is running, and confirm the `demo` database exists. |
 | The assistant says the provider is not configured | Set `GROQ_API_KEY`, `GEMINI_API_KEY`, or `SARVAM_API_KEY` and restart the backend. |
 | Port 3001 is already in use | Vite is configured with `strictPort`; stop the other process or change the frontend port and `APP_ALLOWED_ORIGINS` together. |
